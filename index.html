@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>是正実施（協力業者）試作版</title>
+<style>
+  :root{--navy:#16324F;--blue:#2C4F78;--amber:#E8A33D;--bg:#F3F5F8;--line:#D9DEE6;--red:#C0392B;--green:#2E9E64;--gray:#6B7482}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Noto Sans JP','Hiragino Sans',Meiryo,sans-serif;background:var(--bg);color:#1d2733;-webkit-text-size-adjust:100%}
+  header{background:var(--navy);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px}
+  header h1{font-size:17px;margin:0;flex:1}
+  header button{background:transparent;border:1px solid #fff6;color:#fff;border-radius:8px;padding:6px 10px;font-size:13px}
+  main{padding:14px 14px 80px;max-width:760px;margin:0 auto}
+  .banner{background:#fff3cd;border:1px solid #ecd58a;color:#6b5400;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:12px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+  .card>summary,.card>.ttl{padding:14px;font-weight:700;cursor:pointer;list-style:none}
+  .card>summary::-webkit-details-marker{display:none}
+  .type-btn{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;margin:0 0 4px;font-size:15px;font-weight:700;color:var(--navy)}
+  .badge{font-size:12px;color:#555;margin:0 2px 12px}
+  .inner{padding:0 14px 6px}
+  .btn{border:none;border-radius:10px;padding:14px;font-size:16px;font-weight:700;width:100%}
+  .btn-primary{background:var(--navy);color:#fff}
+  .btn-primary:disabled{background:#9aa6b4}
+  .btn-sub{background:#fff;border:1px solid var(--line);color:var(--navy)}
+  .btn-area{margin:12px 0;color:#fff}
+  .info{background:#e8f1fb;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:14px}
+  .ok{background:#e6f6ec;color:#1c6b40}
+  .err{background:#fdecea;color:var(--red);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:14px}
+  .rec{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:14px}
+  .rec h3{font-size:15px;margin:0 0 8px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cols h4{font-size:12px;margin:0 0 6px;color:var(--gray)}
+  .cols img{width:100%;border-radius:8px;border:1px solid var(--line);display:block}
+  .nophoto{height:90px;display:flex;align-items:center;justify-content:center;background:#eef0f4;border-radius:8px;color:var(--gray);font-size:13px}
+  .reject{background:#fdecea;color:var(--red);padding:8px 10px;border-radius:8px;font-size:13px;margin-bottom:8px}
+  label.cam{display:flex;align-items:center;justify-content:center;gap:6px;background:var(--amber);color:#2B2200;border-radius:10px;padding:12px;font-weight:700;font-size:15px;cursor:pointer}
+  label.cam input{display:none}
+  .row{margin-top:10px}
+  select{width:100%;padding:11px;border-radius:8px;border:1px solid var(--line);font-size:15px;margin:6px 0 10px;background:#fff}
+  input[type=text]{width:100%;padding:11px;border-radius:8px;border:1px solid var(--line);font-size:15px;margin-bottom:12px}
+  #lb{display:none;position:fixed;inset:0;background:#0a0f19ee;z-index:100;align-items:center;justify-content:center;padding:16px}
+  #lb img{max-width:96vw;max-height:94vh;border-radius:8px}
+  .w{font-size:13px;font-weight:700;color:var(--blue);margin:14px 0 8px}
+  .sp{display:inline-block;width:14px;height:14px;border:2px solid #fff7;border-top-color:#fff;border-radius:50%;animation:s 0.8s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="ttl">是正実施</h1>
+  <button id="changeArea" style="display:none">エリア変更</button>
+</header>
+<main>
+  <div class="banner">試作版：本番と同じデータにつながっています。試すときは「【テスト】」の物件だけを使ってください。</div>
+  <div id="view"></div>
+</main>
+<div id="lb"><img alt=""></div>
+
+<script>
+// ==== 設定（現行アプリと同じ接続先・公開用キー） ====
+const SB_URL = "https://vzuzeymvyftmfuaxrvtb.supabase.co";
+const SB_KEY = "sb_publishable_2y-rvfayu8BYs0oo-UOzGA_EQTBYLxm";
+const H = {apikey: SB_KEY, Authorization: "Bearer " + SB_KEY};
+const SHANAI = ["社内検査(設計)", "社内検査(建設)", "社内検査(マーケ)", "社内検査(不動産)"];
+const AREA_KEY = "felix_partner_area";
+
+const $ = s => document.querySelector(s);
+const view = $("#view");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+
+// ==== 通信 ====
+async function sget(table, params){
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {headers: H});
+  if(!r.ok) throw new Error(`${table} 取得失敗 (${r.status})`);
+  return r.json();
+}
+async function spatch(table, col, val, body){
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`, {
+    method:"PATCH", headers:{...H,"Content-Type":"application/json","Prefer":"return=minimal"}, body: JSON.stringify(body)});
+  if(!r.ok) throw new Error(`更新失敗 (${r.status})`);
+}
+async function upload(blob, name){
+  const r = await fetch(`${SB_URL}/storage/v1/object/photos/${name}`, {
+    method:"POST", headers:{...H,"Content-Type":"image/jpeg","Cache-Control":"public, max-age=31536000, immutable"}, body: blob});
+  if(!r.ok) throw new Error(`写真アップロード失敗 (${r.status})`);
+  return `${SB_URL}/storage/v1/object/public/photos/${name}`;
+}
+
+// ==== 画像リサイズ（長辺800px・画質0.6／サムネは長辺400px・画質0.5） ====
+async function toBitmap(file){
+  if(window.createImageBitmap){
+    try{ return await createImageBitmap(file, {imageOrientation:"from-image"}); }catch(e){}
+  }
+  return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=URL.createObjectURL(file); });
+}
+function drawJpeg(bmp, maxSide, q){
+  const w = bmp.width, h = bmp.height, k = Math.min(1, maxSide / Math.max(w,h));
+  const c = document.createElement("canvas"); c.width = Math.round(w*k); c.height = Math.round(h*k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(res => c.toBlob(res, "image/jpeg", q));
+}
+async function makePhotoSet(file){
+  const bmp = await toBitmap(file);
+  return {full: await drawJpeg(bmp, 800, 0.6), thumb: await drawJpeg(bmp, 400, 0.5)};
+}
+
+// ==== 画面の位置をURLに保持（再読み込みしても同じ画面に戻る） ====
+function route(){
+  const q = new URLSearchParams(location.hash.replace(/^#/, ""));
+  return {p: q.get("p"), t: q.get("t")};
+}
+function go(p, t){
+  const q = new URLSearchParams(); if(p && t){ q.set("p",p); q.set("t",t); }
+  location.hash = q.toString();   // hashchangeで再描画
+}
+window.addEventListener("hashchange", render);
+
+// ==== 画面 ====
+let AREA = lsGet(AREA_KEY);
+let pending = {};   // record_id -> {full, thumb, url}（送信前の写真を画面内に保持）
+
+$("#changeArea").onclick = () => { AREA = null; try{localStorage.removeItem(AREA_KEY);}catch(e){} go(); render(); };
+$("#lb").onclick = () => { $("#lb").style.display = "none"; };
+document.addEventListener("click", e => {
+  const im = e.target.closest && e.target.closest("[data-full]");
+  if(im){ $("#lb img").src = im.dataset.full; $("#lb").style.display = "flex"; }
+});
+
+function showError(msg, retry){
+  view.innerHTML = `<div class="err">${esc(msg)}</div><button class="btn btn-primary" id="retry">もう一度読み込む</button>`;
+  $("#retry").onclick = retry;
+}
+
+async function render(){
+  $("#ttl").textContent = "是正実施";
+  if(!AREA){
+    $("#changeArea").style.display = "none";
+    view.innerHTML = `<h2 style="text-align:center;color:var(--navy)">エリアを選択</h2>
+      <button class="btn btn-area" style="background:var(--blue)" data-a="東海エリア">🛠️ 協力業者（東海エリア）</button>
+      <button class="btn btn-area" style="background:var(--amber);color:#2B2200" data-a="関東エリア">🛠️ 協力業者（関東エリア）</button>`;
+    view.querySelectorAll("[data-a]").forEach(b => b.onclick = () => { AREA = b.dataset.a; lsSet(AREA_KEY, AREA); render(); });
+    return;
+  }
+  $("#changeArea").style.display = "";
+  const {p, t} = route();
+  view.innerHTML = `<div class="info">読み込み中…</div>`;
+  try{
+    if(p && t) await renderDetail(p, t); else await renderList();
+  }catch(e){
+    showError("通信に失敗しました。電波の良い場所でもう一度お試しください。（" + e.message + "）", render);
+  }
+}
+
+async function loadTree(){
+  const [recs, ins, props] = await Promise.all([
+    sget("inspection_records", "select=inspection_id,progress_status"),
+    sget("inspections", "select=*&is_deleted=eq.false"),
+    sget("properties", "select=*&is_deleted=eq.false")
+  ]);
+  props.sort((a,b)=>{
+    const ka = (a.handover_date||"").trim() ? [0,a.handover_date] : [1,"9999-12-31"];
+    const kb = (b.handover_date||"").trim() ? [0,b.handover_date] : [1,"9999-12-31"];
+    return ka[0]-kb[0] || (ka[1]<kb[1]?-1:ka[1]>kb[1]?1:0);
+  });
+  const areaOf = {}, hdate = {}; props.forEach(x => { areaOf[x.property_id]=x.area; hdate[x.property_id]=x.handover_date; });
+  const insMap = {}; ins.forEach(i => insMap[i.inspection_id] = i);
+  const tree = {};
+  recs.forEach(r => {
+    const i = insMap[r.inspection_id]; if(!i) return;
+    if(areaOf[i.property_id] !== AREA) return;
+    const pn = i.property_name || "不明", tn = i.inspection_type || "不明";
+    tree[pn] ??= {prop_id:i.property_id, types:{}};
+    const c = tree[pn].types[tn] ??= {total:0, done:0, unres:0, wait_fix:0};
+    c.total++;
+    if(r.progress_status === "完了") c.done++;
+    else { c.unres++; if(r.progress_status === "是正待ち") c.wait_fix++; }
+  });
+  const order = props.map(x=>x.property_name).filter(n => tree[n]);
+  Object.keys(tree).forEach(n => { if(!order.includes(n)) order.push(n); });
+  return {tree, order, hdate, ins};
+}
+
+let q_search = "";
+async function renderList(){
+  const {tree, order, hdate} = await loadTree();
+  let html = `<div class="info ok">現在の表示エリア：【 ${esc(AREA)} 】</div>
+    <input type="text" id="q" placeholder="物件名で検索（一部入力でも可）" value="${esc(q_search)}">`;
+  let any = false;
+  order.forEach(pn => {
+    if(q_search && !pn.includes(q_search)) return;
+    const node = tree[pn];
+    const types = Object.keys(node.types).filter(tn => node.types[tn].wait_fix > 0).sort();
+    if(!types.length) return;
+    any = true;
+    const h = hdate[node.prop_id] ? ` (引渡し: ${esc(hdate[node.prop_id])})` : " (引渡し未設定)";
+    html += `<details class="card"><summary>${esc(pn)}${h}</summary><div class="inner">`;
+    types.forEach(tn => {
+      const c = node.types[tn];
+      html += `<button class="type-btn" data-p="${esc(pn)}" data-t="${esc(tn)}">${esc(tn)}</button>
+        <div class="badge">全 ${c.total} 件 [ 完了：${c.done}件 ／ 未完了：${c.unres}件 ] ※うち是正報告待ち ${c.wait_fix}件</div>`;
+    });
+    html += `</div></details>`;
+  });
+  if(!any) html += `<div class="info">該当する対応必要項目はありません。</div>`;
+  view.innerHTML = html;
+  $("#q").oninput = e => { q_search = e.target.value; renderList(); $("#q").focus(); };
+  view.querySelectorAll(".type-btn").forEach(b => b.onclick = () => go(b.dataset.p, b.dataset.t));
+}
+
+async function renderDetail(pn, tn){
+  $("#ttl").textContent = pn;
+  const {tree, ins} = await loadTree();
+  if(!tree[pn] || !tree[pn].types[tn]){
+    go();   // このエリアに無い物件・検査なら一覧へ
+    return;
+  }
+  const ids = ins.filter(i => i.property_name === pn && i.inspection_type === tn).map(i => i.inspection_id);
+  const recsAll = ids.length ? await sget("inspection_records", `inspection_id=in.(${ids.join(",")})`) : [];
+  let recs = recsAll.filter(r => r.progress_status === "是正待ち");
+  const total = recsAll.length, wait = recs.length;
+
+  let html = `<button class="btn btn-sub" id="back">⬅ 戻る</button>
+    <div class="info">進捗： 指摘総数 ${total}件 ／ 残り（是正報告待ち） ${wait}件</div>`;
+  if(total > 0 && wait === 0) html += `<div class="info ok">この検査の是正はすべて報告済みです。「⬅ 戻る」で一覧に戻れます。</div>`;
+
+  if(recs.length && SHANAI.includes(tn)){
+    const fl = [...new Set(recs.map(r=>r.floor_level).filter(Boolean))].sort();
+    html += `部屋（階層）で絞り込み<select id="ffloor"><option>すべて表示</option>${fl.map(f=>`<option>${esc(f)}</option>`).join("")}</select>`;
+  }
+  if(recs.length){
+    const ws = [...new Set(recs.map(r=>r.work_type||"その他"))].sort();
+    html += `🛠️ 担当工種で絞り込む<select id="fwork"><option>すべて表示</option>${ws.map(f=>`<option>${esc(f)}</option>`).join("")}</select>`;
+  }
+  html += `<div id="recs"></div>`;
+  view.innerHTML = html;
+  $("#back").onclick = () => go();
+
+  const draw = () => {
+    const ff = $("#ffloor")?.value, fw = $("#fwork")?.value;
+    let list = recs;
+    if(ff && ff !== "すべて表示") list = list.filter(r => r.floor_level === ff);
+    if(fw && fw !== "すべて表示") list = list.filter(r => (r.work_type||"その他") === fw);
+    const groups = {}; list.forEach(r => (groups[r.work_type||"その他"] ??= []).push(r));
+    let h = "";
+    Object.entries(groups).forEach(([w, rs]) => {
+      h += `<div class="w">■ 工種: ${esc(w)}</div>`;
+      rs.forEach(r => h += recHtml(r, tn));
+    });
+    $("#recs").innerHTML = h;
+    bindRecs(list, pn, tn, recs, draw);
+  };
+  $("#ffloor")?.addEventListener("change", draw);
+  $("#fwork")?.addEventListener("change", draw);
+  draw();
+}
+
+function recHtml(r, tn){
+  const floor = r.floor_level||"", area = r.area||"", detail = r.issue_detail||"";
+  const head = (tn.startsWith("【検査機関】") || floor === "一式") ? "" : `【${floor} ${area}】`.trim();
+  const title = head ? `${head} ${detail}` : `【指摘内容】 ${detail}`;
+  const before = r.issue_photo_url
+    ? `<img src="${esc(r.issue_photo_thumb_url||r.issue_photo_url)}" data-full="${esc(r.issue_photo_url)}" alt="指摘箇所">`
+    : `<div class="nophoto">写真なし</div>`;
+  const pv = pending[r.record_id];
+  return `<div class="rec" data-id="${esc(r.record_id)}">
+    <h3>${esc(title)}</h3>
+    ${r.reject_reason ? `<div class="reject">否認理由: ${esc(r.reject_reason)}</div>` : ""}
+    <div class="cols">
+      <div><h4>【指摘箇所（Before）】</h4>${before}</div>
+      <div><h4>【是正写真（After）】</h4>
+        <div class="after">${pv ? `<img src="${pv.url}" alt="プレビュー">` : `<div class="nophoto">未撮影</div>`}</div>
+      </div>
+    </div>
+    <div class="row"><label class="cam">📷 ${pv ? "撮り直す" : "写真を撮る／選ぶ"}
+      <input type="file" accept="image/*" capture="environment" data-cam="${esc(r.record_id)}"></label></div>
+    <div class="row"><button class="btn btn-primary" data-send="${esc(r.record_id)}">完了報告</button></div>
+    <div class="msg"></div>
+  </div>`;
+}
+
+function bindRecs(list, pn, tn, allRecs, redraw){
+  document.querySelectorAll("[data-cam]").forEach(inp => inp.onchange = async e => {
+    const id = inp.dataset.cam, f = e.target.files[0]; if(!f) return;
+    const box = inp.closest(".rec"), msg = box.querySelector(".msg");
+    msg.innerHTML = `<div class="info">写真を処理中…</div>`;
+    try{
+      const set = await makePhotoSet(f);
+      if(pending[id]) URL.revokeObjectURL(pending[id].url);
+      pending[id] = {...set, url: URL.createObjectURL(set.full)};
+      box.querySelector(".after").innerHTML = `<img src="${pending[id].url}" alt="プレビュー">`;
+      msg.innerHTML = "";
+    }catch(err){ msg.innerHTML = `<div class="err">写真を読み込めませんでした。もう一度お試しください。</div>`; }
+  });
+  document.querySelectorAll("[data-send]").forEach(btn => btn.onclick = async () => {
+    const id = btn.dataset.send, box = btn.closest(".rec"), msg = box.querySelector(".msg");
+    const pv = pending[id];
+    if(!pv){ msg.innerHTML = `<div class="err">写真が必要です</div>`; return; }
+    btn.disabled = true; btn.innerHTML = `<span class="sp"></span>送信中…`;
+    try{
+      const base = (crypto.randomUUID ? crypto.randomUUID() : Date.now()+"-"+Math.random().toString(16).slice(2));
+      const fullUrl = await upload(pv.full, `${base}.jpg`);
+      let thumbUrl = fullUrl;
+      try{ thumbUrl = await upload(pv.thumb, `${base}_thumb.jpg`); }catch(e){}
+      await spatch("inspection_records", "record_id", id, {progress_status:"是正確認中", fix_photo_url: fullUrl, fix_photo_thumb_url: thumbUrl});
+      URL.revokeObjectURL(pv.url); delete pending[id];
+      const idx = allRecs.findIndex(r => String(r.record_id) === id); if(idx >= 0) allRecs.splice(idx, 1);
+      render();   // 残件数も含めて最新に
+    }catch(err){
+      btn.disabled = false; btn.textContent = "完了報告";
+      msg.innerHTML = `<div class="err">送信に失敗しました。写真は残っています。もう一度「完了報告」を押してください。（${esc(err.message)}）</div>`;
+    }
+  });
+}
+
+render();
+</script>
+</body>
+</html>
