@@ -22,11 +22,13 @@
   .report-item .cap{font-size:12px;color:#555;margin-bottom:4px}
   .noimg{text-align:center;padding:30px;color:#999;border:1px solid #eee}
   .wh{margin:20px 0 10px;border-bottom:1px solid #000;font-size:16px;font-weight:700;padding-bottom:5px;break-after:avoid;break-inside:avoid}
+  #printarea{display:none}
   .delbox{background:#FFF0F0;padding:15px;border:2px solid #FF4B4B;border-radius:10px;margin-bottom:16px}
   .delbox h3{color:#FF4B4B;margin:0 0 6px}
   @media print{
     @page{size:A4 portrait;margin:12mm 12mm}
-    header,#nav,.noprint,.banner,.admin-only,#toast,#lb{display:none !important}
+    header,#nav,.noprint,.banner,.admin-only,#toast,#lb,#screen{display:none !important}
+    #printarea{display:block !important}
     body{background:#fff}
     main{padding:0;max-width:100%}
     .report-item{break-inside:avoid;page-break-inside:avoid;height:60mm;overflow:hidden;border:none;border-bottom:1px dashed #ccc;border-radius:0;padding:10px 0;margin-bottom:6px}
@@ -44,7 +46,7 @@
 <script src="templates.js"></script>
 <script src="common.js"></script>
 <script>
-initPage("done","any");
+initPage("done","admin");
 const ROLE=getRole()||{};
 const IS_ADMIN=ROLE.role==="admin";
 const view=$("#view");
@@ -113,7 +115,7 @@ async function renderDetail(pn,tn){
   const total=recs.length, key=pn+"|"+tn;
   const show=showCount[key]||20, partial=show<total, vis=recs.slice(0,show);
   let h=`<div class="noprint"><button class="btn btn-sub" id="back">⬅ 戻る</button></div>`;
-  if(partial) h+=`<div class="info warn noprint">通信量節約のため、現在 ${vis.length}／${total}件のみ表示しています。<b>印刷・PDF保存する場合は、「全件表示する」を押してから行ってください。</b>表示されている範囲だけが印刷されます。</div>`;
+  if(partial) h+=`<div class="info noprint">通信量節約のため、画面には ${vis.length}／${total}件を表示しています。<b>印刷・PDF保存は、全${total}件がまとめて出力されます。</b></div>`;
   h+=`<div class="row noprint"><button class="btn btn-amber" id="print">🖨️ 印刷／PDFとして保存</button></div>`;
   if(IS_ADMIN){
     h+=`<div class="delbox admin-only"><h3>完了物件の削除（管理者専用）</h3>
@@ -121,28 +123,46 @@ async function renderDetail(pn,tn){
       <input type="password" id="dpw" placeholder="削除用パスワード" style="margin-top:10px">
       <button class="btn btn-danger" id="dbtn">この検査（${esc(tn)}）をゴミ箱に移動する</button></div>`;
   }
-  if(partial) h+=`<div class="btns noprint" style="margin-bottom:12px"><button class="btn btn-sub" id="more">もっと見る（次の20件）</button><button class="btn btn-primary" id="all">🖨️ 全件表示する</button></div>`;
-  h+=`<div class="report-head"><div class="t1">${esc(pn)}</div><div class="t2">${esc(tn)} 報告書</div>
-    <div class="meta"><b>検査日:</b> ${esc(first.inspection_date||"-")} &nbsp;&nbsp; <b>検査員:</b> ${esc(first.inspector||"-")} &nbsp;&nbsp; <b>完了:</b> ${total}件</div></div>`;
-  const groups={}; vis.forEach(r=>(groups[r.work_type||"その他"] ??= []).push(r));
-  let n=1;
-  Object.entries(groups).forEach(([w,rs])=>{
-    rs.forEach((r,idx)=>{
-      const floor=r.floor_level||"";
-      const loc=(tn.startsWith("【検査機関】")||floor==="one"||floor==="一式")?"":`【${esc(floor)} ${esc(r.area||"")}】`;
-      const img=u=>u?`<a href="${esc(u)}" target="_blank"><img class="report-img" src="${esc(u)}" alt=""></a>`:`<div class="noimg">写真なし</div>`;
-      if(idx===0) h+=`<div class="wh">■ 工種: ${esc(w)}</div>`;
-      h+=`<div class="report-item"><div class="top"><div class="no">No.${n} ${loc}</div><div class="ap">${r.approved_date?`<span>承認日: ${esc(r.approved_date)}</span>`:""}</div></div>
-        <div class="dt"><b>指摘内容：</b> ${esc(r.issue_detail||"")}</div>
-        <table><tr><td><div class="cap">[ Before（指摘時） ]</div>${img(r.issue_photo_url)}</td><td><div class="cap">[ After（是正後） ]</div>${img(r.fix_photo_url)}</td></tr></table>
-        ${IS_ADMIN?`<div class="admin-only" style="text-align:right;margin-top:6px"><button class="btn btn-sub btn-s" data-undo="${esc(r.record_id)}">↩️ 完了取消</button></div>`:""}</div>`;
-      n++;
+  if(partial) h+=`<div class="btns noprint" style="margin-bottom:12px"><button class="btn btn-sub" id="more">もっと見る（次の20件）</button><button class="btn btn-primary" id="all">全件を画面に表示する</button></div>`;
+  const itemsHtml=(list,withUndo)=>{
+    const groups={}; list.forEach(r=>(groups[r.work_type||"その他"] ??= []).push(r));
+    let h="", n=1;
+    Object.entries(groups).forEach(([w,rs])=>{
+      rs.forEach((r,idx)=>{
+        const floor=r.floor_level||"";
+        const loc=(tn.startsWith("【検査機関】")||floor==="one"||floor==="一式")?"":`【${esc(floor)} ${esc(r.area||"")}】`;
+        const img=u=>u?`<a href="${esc(u)}" target="_blank"><img class="report-img" src="${esc(u)}" alt=""></a>`:`<div class="noimg">写真なし</div>`;
+        if(idx===0) h+=`<div class="wh">■ 工種: ${esc(w)}</div>`;
+        h+=`<div class="report-item"><div class="top"><div class="no">No.${n} ${loc}</div><div class="ap">${r.approved_date?`<span>承認日: ${esc(r.approved_date)}</span>`:""}</div></div>
+          <div class="dt"><b>指摘内容：</b> ${esc(r.issue_detail||"")}</div>
+          <table><tr><td><div class="cap">[ Before（指摘時） ]</div>${img(r.issue_photo_url)}</td><td><div class="cap">[ After（是正後） ]</div>${img(r.fix_photo_url)}</td></tr></table>
+          ${(withUndo&&IS_ADMIN)?`<div class="admin-only" style="text-align:right;margin-top:6px"><button class="btn btn-sub btn-s" data-undo="${esc(r.record_id)}">↩️ 完了取消</button></div>`:""}</div>`;
+        n++;
+      });
     });
-  });
-  if(partial) h+=`<div class="btns noprint"><button class="btn btn-sub" id="more2">もっと見る（次の20件）</button><button class="btn btn-primary" id="all2">🖨️ 全件表示する</button></div>`;
+    return h;
+  };
+  const headHtml=`<div class="report-head"><div class="t1">${esc(pn)}</div><div class="t2">${esc(tn)} 報告書</div>
+    <div class="meta"><b>検査日:</b> ${esc(first.inspection_date||"-")} &nbsp;&nbsp; <b>検査員:</b> ${esc(first.inspector||"-")} &nbsp;&nbsp; <b>完了:</b> ${total}件</div></div>`;
+  h+=`<div id="screen">${headHtml}${itemsHtml(vis,true)}`;
+  if(partial) h+=`<div class="btns noprint"><button class="btn btn-sub" id="more2">もっと見る（次の20件）</button><button class="btn btn-primary" id="all2">全件を画面に表示する</button></div>`;
+  h+=`</div><div id="printarea"></div>`;
   view.innerHTML=h;
   $("#back").onclick=()=>go();
-  $("#print").onclick=()=>{ if(partial&&!confirm(`まだ ${vis.length}／${total}件 しか表示していません。表示している分だけが印刷されます。このまま印刷しますか？`)) return; window.print(); };
+  $("#print").onclick=async()=>{
+    const btn=$("#print"); spinBtn(btn,"印刷の準備中…（写真を読み込んでいます）");
+    try{
+      $("#printarea").innerHTML=headHtml+itemsHtml(recs,false);
+      const imgs=[...$("#printarea").querySelectorAll("img")];
+      let loaded=0;
+      await Promise.race([
+        Promise.all(imgs.map(im=>new Promise(res=>{ const f=()=>{loaded++; btn.lastChild.textContent=`印刷の準備中… ${loaded}/${imgs.length}`; res();}; if(im.complete) f(); else { im.onload=f; im.onerror=f; } }))),
+        new Promise(res=>setTimeout(res,90000))
+      ]);
+      unspinBtn(btn);
+      window.print();
+    }catch(e){ unspinBtn(btn); toast("印刷の準備に失敗しました。もう一度押してください",false); }
+  };
   ["more","more2"].forEach(i=>{ $("#"+i)?.addEventListener("click",()=>{showCount[key]=show+20;render();}); });
   ["all","all2"].forEach(i=>{ $("#"+i)?.addEventListener("click",()=>{showCount[key]=total;render();}); });
   $$("[data-undo]").forEach(b=>b.onclick=async()=>{

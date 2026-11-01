@@ -85,10 +85,9 @@ async function renderHome(){
   if(admin){
     h+=`<a class="menu main" href="inspect.html">新規検査を開始する</a>
       <a class="menu" href="properties.html">物件登録</a><a class="menu" href="verify.html">検査内容確認</a>
-      <a class="menu" href="admin.html">是正ダッシュボード</a><a class="menu" href="done.html">完了分一覧</a>
-      ${OLD_APP_URL?`<a class="menu" href="${esc(OLD_APP_URL)}" target="_blank">安全検証ツール（旧アプリで開く）</a>`:""}`;
+      <a class="menu" href="admin.html">是正ダッシュボード</a><a class="menu" href="done.html">完了分一覧</a><a class="menu" href="safety.html">安全検証ツール</a>`;
   }else{
-    h+=`<a class="menu main" href="index.html">新規是正を開始する</a><a class="menu" href="done.html">完了分一覧</a>`;
+    h+=`<a class="menu main" href="index.html">新規是正を開始する</a>`;
   }
   h+=`<div class="row"><button class="btn btn-sub" id="logout">ログアウト / アカウントの切り替え</button></div>`;
   view.innerHTML=h;

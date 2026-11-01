@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>安全検証ツール（管理者）試作版</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  .trow{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+  .trow .hd{display:flex;gap:10px;align-items:flex-start}
+  .trow .hd input{width:22px;height:22px;margin-top:2px;flex:none}
+  .trow .nm{font-weight:700;flex:1}
+  .trow .ph{color:var(--gray);font-size:13px;margin-top:2px}
+  .meter{height:14px;background:#E2E6EC;border-radius:7px;overflow:hidden;margin:8px 0 4px}
+  .meter b{display:block;height:100%}
+  h3.sec{margin:26px 0 6px;color:var(--navy)}
+  .cap{color:var(--gray);font-size:13px;margin-bottom:10px}
+</style>
+</head>
+<body>
+<header><h1>安全検証ツール</h1></header>
+<main>
+  <div class="banner">試作版（管理者）：本番と同じデータにつながっています。完全削除は元に戻せません。</div>
+  <div class="card"><div class="inner" style="padding-top:14px">
+    <div class="lab">管理用の合言葉（完全削除・容量確認に必要）</div>
+    <input type="password" id="pin" placeholder="合言葉を入力" autocomplete="off">
+    <button class="btn btn-sub" id="pincheck">合言葉を確認する</button>
+    <div id="pinmsg"></div>
+  </div></div>
+  <div id="view"></div>
+</main>
+<script src="templates.js"></script>
+<script src="common.js"></script>
+<script>
+initPage("safety","admin");
+const view=$("#view");
+const sel={props:new Set(), ins:new Set()};
+let PIN=""; try{ PIN=sessionStorage.getItem("felix_pin")||""; }catch(e){}
+$("#pin").value=PIN;
+const getPin=()=>{ PIN=$("#pin").value; try{ sessionStorage.setItem("felix_pin",PIN); }catch(e){} return PIN; };
+$("#pincheck").onclick=async()=>{
+  const b=$("#pincheck"); spinBtn(b,"確認中…");
+  try{ await callAdmin(getPin(),"ping"); $("#pinmsg").innerHTML=`<div class="info ok">合言葉を確認しました</div>`; }
+  catch(e){ $("#pinmsg").innerHTML=`<div class="err">${esc(e.message)}</div>`; }
+  unspinBtn(b);
+};
+const purgeMsg=(t,s,note)=>{
+  if(note&&s<t) return {ok:false,text:`${note}（写真${s}/${t}枚）`};
+  if(t===0||s===t) return {ok:true,text:`完全に削除しました（写真${s}/${t}枚）`};
+  return {ok:false,text:`写真の一部が削除できませんでした（写真${s}/${t}枚）。もう一度お試しください`};
+};
+
+function photoCount(rs){ return rs.reduce((a,r)=>a+(r.issue_photo_url?1:0)+(r.fix_photo_url?1:0),0); }
+
+async function load(){
+  const [props,ins]=await Promise.all([
+    sgetAll("properties","is_deleted=eq.true&select=*"),
+    sgetAll("inspections","is_deleted=eq.true&select=*")]);
+  const pids=props.map(p=>p.property_id);
+  const propCnt={}, insCnt={};
+  // 物件ごとの写真枚数（物件に直接ぶら下がるもの＋その物件の全検査の分）
+  if(pids.length){
+    const allIns=[]; for(let i=0;i<pids.length;i+=50) allIns.push(...await sgetAll("inspections",`property_id=in.(${pids.slice(i,i+50).map(encodeURIComponent).join(",")})&select=inspection_id,property_id`));
+    const insToProp={}; allIns.forEach(x=>insToProp[x.inspection_id]=x.property_id);
+    const seen=new Set();
+    const addRecs=rs=>rs.forEach(r=>{ if(seen.has(r.record_id)) return; seen.add(r.record_id); const pid=r.property_id&&pids.includes(r.property_id)?r.property_id:insToProp[r.inspection_id]; if(pid) propCnt[pid]=(propCnt[pid]||0)+photoCount([r]); });
+    for(let i=0;i<pids.length;i+=50) addRecs(await sgetAll("inspection_records",`property_id=in.(${pids.slice(i,i+50).map(encodeURIComponent).join(",")})&select=record_id,inspection_id,property_id,issue_photo_url,fix_photo_url`));
+    const iids=allIns.map(x=>x.inspection_id);
+    for(let i=0;i<iids.length;i+=50) addRecs(await sgetAll("inspection_records",`inspection_id=in.(${iids.slice(i,i+50).map(encodeURIComponent).join(",")})&select=record_id,inspection_id,property_id,issue_photo_url,fix_photo_url`));
+  }
+  const iids=ins.map(x=>x.inspection_id);
+  for(let i=0;i<iids.length;i+=50){
+    const rs=await sgetAll("inspection_records",`inspection_id=in.(${iids.slice(i,i+50).map(encodeURIComponent).join(",")})&select=record_id,inspection_id,issue_photo_url,fix_photo_url`);
+    rs.forEach(r=>insCnt[r.inspection_id]=(insCnt[r.inspection_id]||0)+photoCount([r]));
+  }
+  return {props:sortProps(props),ins:[...ins].sort((a,b)=>((a.property_name||"")+(a.inspection_type||"")).localeCompare((b.property_name||"")+(b.inspection_type||""),"ja")),propCnt,insCnt};
+}
+
+async function render(){
+  view.innerHTML=`<div class="info">読み込み中…</div>`;
+  let D;
+  try{ D=await load(); }catch(e){ showError(view,"通信に失敗しました。もう一度お試しください。（"+e.message+"）",render); return; }
+  let h=`<h3 class="sec">🗑️ ゴミ箱（物件単位）</h3><div class="cap">物件登録画面から削除された物件です。復元、または完全に削除できます</div>`;
+  if(!D.props.length) h+=`<div class="info">削除済みの物件はありません。</div>`;
+  D.props.forEach(p=>{
+    h+=`<div class="trow"><div class="hd"><input type="checkbox" data-sp="${esc(p.property_id)}" ${sel.props.has(p.property_id)?"checked":""}>
+      <div><div class="nm">[${esc(p.area||"未設定")}] ${esc(p.property_name||"不明")}</div><div class="ph">📷 写真${D.propCnt[p.property_id]||0}枚</div></div></div>
+      <div class="btns row"><button class="btn btn-sub" data-rp="${esc(p.property_id)}">↩️ 復元する</button><button class="btn btn-danger" data-pp="${esc(p.property_id)}">🔥 完全に削除</button></div></div>`;
+  });
+  if(sel.props.size) h+=`<button class="btn btn-danger" id="bulkp">🔥 選択した${sel.props.size}件の物件をまとめて完全に削除する</button>`;
+  h+=`<h3 class="sec">🗑️ ゴミ箱（検査単位）</h3><div class="cap">完了分一覧から削除された検査です（物件名順）</div>`;
+  if(!D.ins.length) h+=`<div class="info">削除済みの検査はありません。</div>`;
+  D.ins.forEach(i=>{
+    h+=`<div class="trow"><div class="hd"><input type="checkbox" data-si="${esc(i.inspection_id)}" ${sel.ins.has(i.inspection_id)?"checked":""}>
+      <div><div class="nm">${esc(i.property_name||"不明")} / ${esc(i.inspection_type||"不明")}</div><div class="ph">📷 写真${D.insCnt[i.inspection_id]||0}枚</div></div></div>
+      <div class="btns row"><button class="btn btn-sub" data-ri="${esc(i.inspection_id)}">↩️ 復元する</button><button class="btn btn-danger" data-pi="${esc(i.inspection_id)}">🔥 完全に削除</button></div></div>`;
+  });
+  if(sel.ins.size) h+=`<button class="btn btn-danger" id="bulki">🔥 選択した${sel.ins.size}件の検査をまとめて完全に削除する</button>`;
+  h+=`<h3 class="sec">📦 保存容量と、使われていない写真の照合</h3><div class="cap">写真の保存容量（無料枠は1GB）と、どのデータにも紐づかない写真を調べます</div>
+    <button class="btn btn-primary" id="scan">🔍 容量を確認し、使われていない写真を照合する</button><div id="scanres"></div>`;
+  view.innerHTML=h;
+
+  view.querySelectorAll("[data-sp]").forEach(c=>c.onchange=()=>{ c.checked?sel.props.add(c.dataset.sp):sel.props.delete(c.dataset.sp); render(); });
+  view.querySelectorAll("[data-si]").forEach(c=>c.onchange=()=>{ c.checked?sel.ins.add(c.dataset.si):sel.ins.delete(c.dataset.si); render(); });
+  view.querySelectorAll("[data-rp]").forEach(b=>b.onclick=async()=>{ spinBtn(b,"復元中…"); try{ await spatch("properties","property_id",b.dataset.rp,{is_deleted:false}); toast("物件を復元しました"); render(); }catch(e){ unspinBtn(b); toast("復元に失敗しました。もう一度押してください",false); }});
+  view.querySelectorAll("[data-ri]").forEach(b=>b.onclick=async()=>{ spinBtn(b,"復元中…"); try{ await spatch("inspections","inspection_id",b.dataset.ri,{is_deleted:false}); toast("検査を復元しました"); render(); }catch(e){ unspinBtn(b); toast("復元に失敗しました。もう一度押してください",false); }});
+
+  const purge=async(btn,action,id,label)=>{
+    if(!getPin()){ toast("上の欄に合言葉を入力してください",false); return null; }
+    if(!confirm(`${label} を完全に削除します（写真も消え、元に戻せません）。よろしいですか？`)) return null;
+    spinBtn(btn,"完全削除中…");
+    try{ return await callAdmin(PIN,action,{id}); }
+    catch(e){ unspinBtn(btn); toast("削除に失敗しました："+e.message,false); return null; }
+  };
+  view.querySelectorAll("[data-pp]").forEach(b=>b.onclick=async()=>{
+    const p=D.props.find(x=>x.property_id===b.dataset.pp);
+    const r=await purge(b,"purge_property",b.dataset.pp,`物件「${p.property_name}」`); if(!r) return;
+    const m=purgeMsg(r.total,r.success,r.note); sel.props.delete(b.dataset.pp); toast(m.text,m.ok); render();
+  });
+  view.querySelectorAll("[data-pi]").forEach(b=>b.onclick=async()=>{
+    const i=D.ins.find(x=>x.inspection_id===b.dataset.pi);
+    const r=await purge(b,"purge_inspection",b.dataset.pi,`検査「${i.property_name} / ${i.inspection_type}」`); if(!r) return;
+    const m=purgeMsg(r.total,r.success,r.note); sel.ins.delete(b.dataset.pi); toast(m.text,m.ok); render();
+  });
+  const bulk=async(btn,set,action,label)=>{
+    if(!getPin()){ toast("上の欄に合言葉を入力してください",false); return; }
+    if(!confirm(`選択した${set.size}件の${label}を完全に削除します（写真も消え、元に戻せません）。よろしいですか？`)) return;
+    spinBtn(btn,"一括削除中…"); let T=0,S=0,ng=0,lastNote="";
+    for(const id of [...set]){
+      try{ const r=await callAdmin(PIN,action,{id}); T+=r.total; S+=r.success; if(r.note&&r.success<r.total){ ng++; lastNote=r.note; } else set.delete(id); }
+      catch(e){ ng++; lastNote=e.message; }
+    }
+    if(ng) toast(`${ng}件で失敗しました（${lastNote}）。写真${S}/${T}枚は削除済みです`,false); else toast(`すべて完全に削除しました（写真${S}/${T}枚）`);
+    render();
+  };
+  $("#bulkp")?.addEventListener("click",()=>bulk($("#bulkp"),sel.props,"purge_property","物件"));
+  $("#bulki")?.addEventListener("click",()=>bulk($("#bulki"),sel.ins,"purge_inspection","検査"));
+
+  $("#scan").onclick=async()=>{
+    if(!getPin()){ toast("上の欄に合言葉を入力してください",false); return; }
+    const b=$("#scan"); spinBtn(b,"照合中…（数十秒かかることがあります）");
+    try{
+      const s=await callAdmin(PIN,"scan");
+      const mb=s.bytes/1048576, pct=Math.min(100,mb/1024*100), color=pct>=93?"#C0392B":pct>=83?"#E8A33D":"#2E9E64";
+      let r=`<div class="info">写真の保存容量：<b>${mb.toFixed(0)} MB</b> ／ 1,024 MB（${pct.toFixed(0)}%）　ファイル数：${s.files.toLocaleString()}件
+        <div class="meter"><b style="width:${pct}%;background:${color}"></b></div>
+        <small>目安：850MB超で削除、950MB超でProプランを検討</small></div>`;
+      if(!s.orphans.length) r+=`<div class="info ok">✨ どのデータにも紐づかない写真は0枚です。ストレージはきれいな状態です。</div>`;
+      else r+=`<div class="info warn">⚠️ どこにも紐づかない写真が <b>${s.orphans.length}枚</b>（約${(s.orphan_bytes/1048576).toFixed(1)}MB）見つかりました。
+        <details style="margin-top:6px"><summary>ファイル名（先頭10件）</summary>${s.orphans.slice(0,10).map(n=>`<div style="font-size:12px">${esc(n)}</div>`).join("")}</details></div>
+        <button class="btn btn-danger" id="delorph">🔥 使われていない写真 ${s.orphans.length}枚を削除する</button>`;
+      $("#scanres").innerHTML=r;
+      $("#delorph")?.addEventListener("click",async()=>{
+        if(!confirm(`使われていない写真 ${s.orphans.length}枚 を削除します。よろしいですか？`)) return;
+        const d=$("#delorph"); spinBtn(d,"削除中…");
+        try{ const x=await callAdmin(PIN,"delete_orphans",{names:s.orphans}); toast(`${x.success}枚の写真を削除しました`+(x.skipped?`（${x.skipped}枚は使われていたため残しました）`:"")); $("#scan").click(); }
+        catch(e){ unspinBtn(d); toast("削除に失敗しました："+e.message,false); }
+      });
+    }catch(e){ $("#scanres").innerHTML=`<div class="err">${esc(e.message)}</div>`; }
+    unspinBtn(b);
+  };
+}
+render();
+</script>
+</body>
+</html>

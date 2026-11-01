@@ -59,6 +59,26 @@ async function sget(table, params){
   if(!r.ok) throw new Error(`${table} 取得失敗 (${r.status})`);
   return r.json();
 }
+// 1000件を超えても全件取得（ページを分けて取る）
+async function sgetAll(table, params){
+  const out=[], size=1000;
+  for(let from=0;;from+=size){
+    const r=await fetch(`${SB_URL}/rest/v1/${table}?${params}`,{headers:{...H,Range:`${from}-${from+size-1}`,"Range-Unit":"items"}});
+    if(!r.ok&&r.status!==206) throw new Error(`${table} 取得失敗 (${r.status})`);
+    const rows=await r.json(); out.push(...rows); if(rows.length<size) break;
+  }
+  return out;
+}
+// 管理用Edge Function（秘密のキーが必要な操作）を呼ぶ
+const FN_URL = SB_URL + "/functions/v1/felix-admin";
+async function callAdmin(pin, action, payload){
+  let r;
+  try{ r=await fetch(FN_URL,{method:"POST",headers:{...H,"Content-Type":"application/json"},body:JSON.stringify({pin,action,...(payload||{})})}); }
+  catch(e){ throw new Error("通信に失敗しました。電波の良い場所でお試しください"); }
+  let j={}; try{ j=await r.json(); }catch(e){}
+  if(!r.ok) throw new Error(j.error||`管理用機能がエラーを返しました (${r.status})。Edge Functionの設定を確認してください`);
+  return j;
+}
 async function spost(table, body){
   const r = await fetch(`${SB_URL}/rest/v1/${table}`, {method:"POST", headers:{...H,"Content-Type":"application/json","Prefer":"return=minimal"}, body: JSON.stringify(body)});
   if(r.status===409) return "duplicate";   // 同じIDが既にある＝すでに送信済み
@@ -172,8 +192,8 @@ function initPage(activeKey, need){
   document.body.insertAdjacentHTML("beforeend",`<div id="lb"><img alt=""></div><div id="toast"></div>`);
   $("#lb").onclick=()=>{$("#lb").style.display="none";};
   document.addEventListener("click",e=>{ const im=e.target.closest&&e.target.closest("[data-full]"); if(im){ $("#lb img").src=im.dataset.full; $("#lb").style.display="flex"; }});
-  const admin=[["home","ホーム","home.html?m=1"],["properties","物件登録","properties.html"],["inspect","検査実施","inspect.html"],["verify","検査内容確認","verify.html"],["admin","是正ダッシュボード","admin.html"],["done","完了分一覧","done.html"]];
-  const partner=[["home","ホーム","home.html?m=1"],["partner","是正実施","index.html"],["done","完了分一覧","done.html"]];
+  const admin=[["home","ホーム","home.html?m=1"],["properties","物件登録","properties.html"],["inspect","検査実施","inspect.html"],["verify","検査内容確認","verify.html"],["admin","是正ダッシュボード","admin.html"],["done","完了分一覧","done.html"],["safety","安全検証ツール","safety.html"]];
+  const partner=[["home","ホーム","home.html?m=1"],["partner","是正実施","index.html"]];
   const pages=(role&&role.role==="partner")?partner:admin;
   document.querySelector("header").insertAdjacentHTML("afterend",`<nav id="nav">${pages.map(p=>`<a href="${p[2]}" class="${p[0]===activeKey?"on":""}">${p[1]}</a>`).join("")}</nav>`);
 }
