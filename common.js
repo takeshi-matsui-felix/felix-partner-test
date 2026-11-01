@@ -180,7 +180,14 @@ function showError(root, msg, retry){
 
 // ---- ログイン中の役割（home.html で選択。端末内に保存）----
 const OLD_APP_URL = "";   // 旧アプリ（Streamlit）のURL。安全検証ツールへの案内に使う。空なら表示しない
-function getRole(){ try{ return JSON.parse(lsGet("felix_role")||"null"); }catch(e){ return null; } }
+const ADMIN_MS=12*3600*1000;   // 管理者の入室は12時間で切れる（合言葉の再入力）
+function getRole(){
+  try{
+    const r=JSON.parse(lsGet("felix_role")||"null");
+    if(r&&r.role==="admin"&&(!r.ts||Date.now()-r.ts>ADMIN_MS)){ lsDel("felix_role"); return null; }
+    return r;
+  }catch(e){ return null; }
+}
 function setRole(r){ lsSet("felix_role", JSON.stringify(r)); }
 function clearRole(){ lsDel("felix_role"); }
 

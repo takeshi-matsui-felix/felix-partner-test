@@ -72,7 +72,7 @@
 <div id="toast"></div>
 
 <script>
-try{ const _r=JSON.parse(localStorage.getItem("felix_role")||"null"); if(!_r||_r.role!=="admin") location.replace("home.html"); }catch(e){ location.replace("home.html"); }
+try{ const _r=JSON.parse(localStorage.getItem("felix_role")||"null"); if(!_r||_r.role!=="admin"||!_r.ts||Date.now()-_r.ts>12*3600*1000) location.replace("home.html"); }catch(e){ location.replace("home.html"); }
 const SB_URL = "https://vzuzeymvyftmfuaxrvtb.supabase.co";
 const SB_KEY = "sb_publishable_2y-rvfayu8BYs0oo-UOzGA_EQTBYLxm";
 const H = {apikey: SB_KEY, Authorization: "Bearer " + SB_KEY};
