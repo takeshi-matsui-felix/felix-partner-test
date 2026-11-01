@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>完了分一覧 試作版</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  .report-img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;display:block;border:1px solid var(--line);cursor:zoom-in}
+  .report-head{background:#fff;text-align:center}
+  .report-head .t1{font-size:24px;font-weight:700;margin-bottom:5px}
+  .report-head .t2{font-size:20px;font-weight:700}
+  .report-head .meta{text-align:right;font-size:12px;color:#555;margin:6px 0 10px;border-bottom:2px solid #000;padding-bottom:5px}
+  .report-item{background:#fff;padding:10px 12px;margin-bottom:12px;border:1px solid var(--line);border-radius:10px}
+  .report-item .top{display:flex;justify-content:space-between;align-items:flex-end}
+  .report-item .no{font-size:14px;font-weight:700;margin-top:5px}
+  .report-item .ap{font-size:11px;color:#555;font-weight:700}
+  .report-item .ap span{background:#f1f3f4;padding:3px 8px;border-radius:4px}
+  .report-item .dt{font-size:14px;margin:5px 0 12px;line-height:1.4}
+  .report-item table{width:100%;table-layout:fixed;border-collapse:collapse}
+  .report-item td{width:50%;text-align:center;vertical-align:top;padding:0 5px}
+  .report-item .cap{font-size:12px;color:#555;margin-bottom:4px}
+  .noimg{text-align:center;padding:30px;color:#999;border:1px solid #eee}
+  .wh{margin:20px 0 10px;border-bottom:1px solid #000;font-size:16px;font-weight:700;padding-bottom:5px;break-after:avoid;break-inside:avoid}
+  .delbox{background:#FFF0F0;padding:15px;border:2px solid #FF4B4B;border-radius:10px;margin-bottom:16px}
+  .delbox h3{color:#FF4B4B;margin:0 0 6px}
+  @media print{
+    @page{size:A4 portrait;margin:12mm 12mm}
+    header,#nav,.noprint,.banner,.admin-only,#toast,#lb{display:none !important}
+    body{background:#fff}
+    main{padding:0;max-width:100%}
+    .report-item{break-inside:avoid;page-break-inside:avoid;height:60mm;overflow:hidden;border:none;border-bottom:1px dashed #ccc;border-radius:0;padding:10px 0;margin-bottom:6px}
+    .report-item .report-img{aspect-ratio:auto;height:34mm;max-height:34mm;object-fit:contain;background:#F3F5F8;border:none;border-radius:0}
+    .report-item .dt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:6px}
+  }
+</style>
+</head>
+<body>
+<header><h1 id="ttl">完了分一覧</h1></header>
+<main>
+  <div class="banner">試作版：本番と同じデータにつながっています。試すときは「【テスト】」の物件だけを使ってください。</div>
+  <div id="view"></div>
+</main>
+<script src="templates.js"></script>
+<script src="common.js"></script>
+<script>
+initPage("done","any");
+const ROLE=getRole()||{};
+const IS_ADMIN=ROLE.role==="admin";
+const view=$("#view");
+let areaSel="すべて表示", q_search="", LC=null;
+const showCount={};   // 検査ごとの表示件数（初期20件）
+
+function route(){ const q=new URLSearchParams(location.hash.replace(/^#/,"")); return {p:q.get("p"),t:q.get("t")}; }
+function go(p,t){ const q=new URLSearchParams(); if(p&&t){q.set("p",p);q.set("t",t);} location.hash=q.toString(); }
+window.addEventListener("hashchange",()=>render());
+
+async function render(){
+  const {p,t}=route();
+  view.innerHTML=`<div class="info">読み込み中…</div>`;
+  try{ if(p&&t) await renderDetail(p,t); else await renderList(false); }
+  catch(e){ showError(view,"通信に失敗しました。もう一度お試しください。（"+e.message+"）",()=>render()); }
+}
+
+async function renderList(fromCache){
+  $("#ttl").textContent="完了分一覧";
+  if(!(fromCache&&LC)){
+    const [recs,ins,props]=await Promise.all([
+      sget("inspection_records","select=inspection_id,progress_status&progress_status=eq.完了"),
+      sget("inspections","select=*&is_deleted=eq.false"),
+      sget("properties","select=*&is_deleted=eq.false")]);
+    LC={recs,ins,props:sortProps(props)};
+  }
+  const {recs,ins,props}=LC;
+  const tArea=IS_ADMIN?(areaSel!=="すべて表示"?areaSel:null):(ROLE.area||null);
+  const areaOf={},hdate={}; props.forEach(x=>{areaOf[x.property_id]=x.area;hdate[x.property_id]=x.handover_date;});
+  const insMap={}; ins.forEach(i=>insMap[i.inspection_id]=i);
+  const tree={};
+  recs.forEach(r=>{
+    const i=insMap[r.inspection_id]; if(!i) return;
+    if(tArea&&areaOf[i.property_id]!==tArea) return;
+    const pn=i.property_name||"不明", tn=i.inspection_type||"不明";
+    tree[pn] ??= {prop_id:i.property_id,types:{}};
+    tree[pn].types[tn]=(tree[pn].types[tn]||0)+1;
+  });
+  const order=props.map(x=>x.property_name).filter(n=>tree[n]);
+  Object.keys(tree).forEach(n=>{ if(!order.includes(n)) order.push(n); });
+  let h="";
+  if(IS_ADMIN) h+=`<div class="seg">${["すべて表示","東海エリア","関東エリア"].map(a=>`<button data-area="${a}" class="${a===areaSel?"on":""}">${a}</button>`).join("")}</div>`;
+  h+=`<input type="text" id="q" placeholder="物件名で検索（一部入力でも可）" value="${esc(q_search)}">`;
+  let any=false;
+  order.forEach(pn=>{
+    if(q_search&&!pn.includes(q_search)) return; any=true;
+    const node=tree[pn], hd=hdate[node.prop_id]?`（引渡し日: ${esc(hdate[node.prop_id])}）`:"（引渡し日: 未設定）";
+    h+=`<details class="card"><summary><span class="nm">${esc(pn)} ${hd}</span></summary><div class="inner">
+      ${Object.entries(node.types).map(([tn,c])=>`<button class="btn btn-sub" style="margin-bottom:8px;text-align:left" data-p="${esc(pn)}" data-t="${esc(tn)}">${esc(tn)} (完了: ${c}件)</button>`).join("")}</div></details>`;
+  });
+  if(!any) h+=`<div class="info">該当する項目はありません。</div>`;
+  view.innerHTML=h;
+  view.querySelectorAll("[data-area]").forEach(b=>b.onclick=()=>{areaSel=b.dataset.area;renderList(true);});
+  $("#q").oninput=e=>{q_search=e.target.value;renderList(true).then(()=>{const q=$("#q");q.focus();q.setSelectionRange(q.value.length,q.value.length);});};
+  view.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>go(b.dataset.p,b.dataset.t));
+}
+
+async function renderDetail(pn,tn){
+  $("#ttl").textContent=pn;
+  const ins=await sget("inspections","select=*&is_deleted=eq.false");
+  const mine=ins.filter(i=>i.property_name===pn&&i.inspection_type===tn);
+  if(!mine.length){ go(); return; }
+  const ids=mine.map(i=>i.inspection_id), first=mine[0];
+  let recs=await sget("inspection_records",`inspection_id=in.(${ids.join(",")})&progress_status=eq.完了`);
+  recs=sortRecs(recs);
+  const total=recs.length, key=pn+"|"+tn;
+  const show=showCount[key]||20, partial=show<total, vis=recs.slice(0,show);
+  let h=`<div class="noprint"><button class="btn btn-sub" id="back">⬅ 戻る</button></div>`;
+  if(partial) h+=`<div class="info warn noprint">通信量節約のため、現在 ${vis.length}／${total}件のみ表示しています。<b>印刷・PDF保存する場合は、「全件表示する」を押してから行ってください。</b>表示されている範囲だけが印刷されます。</div>`;
+  h+=`<div class="row noprint"><button class="btn btn-amber" id="print">🖨️ 印刷／PDFとして保存</button></div>`;
+  if(IS_ADMIN){
+    h+=`<div class="delbox admin-only"><h3>完了物件の削除（管理者専用）</h3>
+      <div style="font-size:14px">この検査記録の保存（上の「印刷／PDFとして保存」）が完了しましたら、一覧を整理するためにここから削除できます。<br><b>※削除してもデータは完全には消えず、後から「安全検証ツール」画面で復元できます。</b></div>
+      <input type="password" id="dpw" placeholder="削除用パスワード" style="margin-top:10px">
+      <button class="btn btn-danger" id="dbtn">この検査（${esc(tn)}）をゴミ箱に移動する</button></div>`;
+  }
+  if(partial) h+=`<div class="btns noprint" style="margin-bottom:12px"><button class="btn btn-sub" id="more">もっと見る（次の20件）</button><button class="btn btn-primary" id="all">🖨️ 全件表示する</button></div>`;
+  h+=`<div class="report-head"><div class="t1">${esc(pn)}</div><div class="t2">${esc(tn)} 報告書</div>
+    <div class="meta"><b>検査日:</b> ${esc(first.inspection_date||"-")} &nbsp;&nbsp; <b>検査員:</b> ${esc(first.inspector||"-")} &nbsp;&nbsp; <b>完了:</b> ${total}件</div></div>`;
+  const groups={}; vis.forEach(r=>(groups[r.work_type||"その他"] ??= []).push(r));
+  let n=1;
+  Object.entries(groups).forEach(([w,rs])=>{
+    rs.forEach((r,idx)=>{
+      const floor=r.floor_level||"";
+      const loc=(tn.startsWith("【検査機関】")||floor==="one"||floor==="一式")?"":`【${esc(floor)} ${esc(r.area||"")}】`;
+      const img=u=>u?`<a href="${esc(u)}" target="_blank"><img class="report-img" src="${esc(u)}" alt=""></a>`:`<div class="noimg">写真なし</div>`;
+      if(idx===0) h+=`<div class="wh">■ 工種: ${esc(w)}</div>`;
+      h+=`<div class="report-item"><div class="top"><div class="no">No.${n} ${loc}</div><div class="ap">${r.approved_date?`<span>承認日: ${esc(r.approved_date)}</span>`:""}</div></div>
+        <div class="dt"><b>指摘内容：</b> ${esc(r.issue_detail||"")}</div>
+        <table><tr><td><div class="cap">[ Before（指摘時） ]</div>${img(r.issue_photo_url)}</td><td><div class="cap">[ After（是正後） ]</div>${img(r.fix_photo_url)}</td></tr></table>
+        ${IS_ADMIN?`<div class="admin-only" style="text-align:right;margin-top:6px"><button class="btn btn-sub btn-s" data-undo="${esc(r.record_id)}">↩️ 完了取消</button></div>`:""}</div>`;
+      n++;
+    });
+  });
+  if(partial) h+=`<div class="btns noprint"><button class="btn btn-sub" id="more2">もっと見る（次の20件）</button><button class="btn btn-primary" id="all2">🖨️ 全件表示する</button></div>`;
+  view.innerHTML=h;
+  $("#back").onclick=()=>go();
+  $("#print").onclick=()=>{ if(partial&&!confirm(`まだ ${vis.length}／${total}件 しか表示していません。表示している分だけが印刷されます。このまま印刷しますか？`)) return; window.print(); };
+  ["more","more2"].forEach(i=>{ $("#"+i)?.addEventListener("click",()=>{showCount[key]=show+20;render();}); });
+  ["all","all2"].forEach(i=>{ $("#"+i)?.addEventListener("click",()=>{showCount[key]=total;render();}); });
+  $$("[data-undo]").forEach(b=>b.onclick=async()=>{
+    if(!confirm("この指摘の完了を取り消して、是正ダッシュボードに戻します。よろしいですか？")) return;
+    spinBtn(b,"処理中…");
+    try{ await spatch("inspection_records","record_id",b.dataset.undo,{progress_status:"是正確認中",approved_date:null}); LC=null; toast("完了を取り消し、ダッシュボードに復活させました"); render(); }
+    catch(e){ unspinBtn(b); toast("完了の取り消しに失敗しました。もう一度押してください",false); }
+  });
+  $("#dbtn")?.addEventListener("click",async()=>{
+    if($("#dpw").value!==DELETE_PASSWORD){ toast("パスワードが違います",false); return; }
+    const btn=$("#dbtn"); spinBtn(btn,"処理中…");
+    try{ for(const id of ids) await spatch("inspections","inspection_id",id,{is_deleted:true}); LC=null; toast("ゴミ箱に移動しました（復元は旧アプリの「安全検証ツール」から可能です）"); go(); }
+    catch(e){ unspinBtn(btn); toast("ゴミ箱への移動に失敗しました。もう一度押してください",false); }
+  });
+}
+render();
+</script>
+</body>
+</html>

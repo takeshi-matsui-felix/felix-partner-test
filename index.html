@@ -53,8 +53,10 @@
 <body>
 <header>
   <h1 id="ttl">是正実施</h1>
-  <button id="changeArea" style="display:none">エリア変更</button>
+  <button id="changeArea" style="display:none">ホーム</button>
 </header>
+<style>#nav{display:flex;gap:6px;overflow-x:auto;background:#0E2338;padding:8px 10px;position:sticky;top:50px;z-index:9}#nav a{flex:none;color:#cfd8e3;text-decoration:none;font-size:13px;padding:7px 12px;border-radius:16px;white-space:nowrap}#nav a.on{background:#E8A33D;color:#2B2200;font-weight:700}</style>
+<nav id="nav"><a href="home.html?m=1">ホーム</a><a href="index.html" class="on">是正実施</a><a href="done.html">完了分一覧</a></nav>
 <main>
   <div class="banner">試作版：本番と同じデータにつながっています。試すときは「【テスト】」の物件だけを使ってください。</div>
   <div id="view"></div>
@@ -74,6 +76,7 @@ const view = $("#view");
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
 
 // ==== 通信 ====
 async function sget(table, params){
@@ -160,10 +163,12 @@ function go(p, t){
 window.addEventListener("hashchange", render);
 
 // ==== 画面 ====
-let AREA = lsGet(AREA_KEY);
+let ROLE = null; try{ ROLE = JSON.parse(lsGet("felix_role")||"null"); }catch(e){}
+if(!ROLE){ location.replace("home.html"); }
+let AREA = (ROLE && ROLE.role==="partner") ? ROLE.area : lsGet(AREA_KEY);
 let pending = {};   // record_id -> {full, thumb, url}（送信前の写真を画面内に保持）
 
-$("#changeArea").onclick = () => { AREA = null; try{localStorage.removeItem(AREA_KEY);}catch(e){} go(); render(); };
+$("#changeArea").onclick = () => { location.href = "home.html?m=1"; };
 $("#lb").onclick = () => { $("#lb").style.display = "none"; };
 document.addEventListener("click", e => {
   const im = e.target.closest && e.target.closest("[data-full]");
@@ -226,6 +231,7 @@ async function loadTree(){
 
 let q_search = "";
 async function renderList(){
+  lsDel("felix_partner_session");
   const {tree, order, hdate} = await loadTree();
   let html = `<div class="info ok">現在の表示エリア：【 ${esc(AREA)} 】</div>
     <input type="text" id="q" placeholder="物件名で検索（一部入力でも可）" value="${esc(q_search)}">`;
@@ -258,6 +264,7 @@ async function renderDetail(pn, tn){
     go();   // このエリアに無い物件・検査なら一覧へ
     return;
   }
+  lsSet("felix_partner_session", JSON.stringify({prop: pn, type: tn, ts: Date.now()}));   // 12時間以内なら、ホームから自動で戻れる
   const ids = ins.filter(i => i.property_name === pn && i.inspection_type === tn).map(i => i.inspection_id);
   const recsAll = ids.length ? await sget("inspection_records", `inspection_id=in.(${ids.join(",")})`) : [];
   let recs = recsAll.filter(r => r.progress_status === "是正待ち");
@@ -265,7 +272,7 @@ async function renderDetail(pn, tn){
 
   let html = `<button class="btn btn-sub" id="back">⬅ 戻る</button>
     <div class="info">進捗： 指摘総数 ${total}件 ／ 残り（是正報告待ち） ${wait}件</div>`;
-  if(total > 0 && wait === 0) html += `<div class="info ok">この検査の是正はすべて報告済みです。「⬅ 戻る」で一覧に戻れます。</div>`;
+  if(total > 0 && wait === 0){ html += `<div class="info ok">この検査の是正はすべて報告済みです。「⬅ 戻る」で一覧に戻れます。</div>`; lsDel("felix_partner_session"); }
 
   if(recs.length && SHANAI.includes(tn)){
     const fl = [...new Set(recs.map(r=>r.floor_level).filter(Boolean))].sort();

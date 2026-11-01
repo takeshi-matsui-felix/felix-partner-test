@@ -158,12 +158,23 @@ function showError(root, msg, retry){
   $("#retry").onclick=retry;
 }
 
+// ---- ログイン中の役割（home.html で選択。端末内に保存）----
+const OLD_APP_URL = "";   // 旧アプリ（Streamlit）のURL。安全検証ツールへの案内に使う。空なら表示しない
+function getRole(){ try{ return JSON.parse(lsGet("felix_role")||"null"); }catch(e){ return null; } }
+function setRole(r){ lsSet("felix_role", JSON.stringify(r)); }
+function clearRole(){ lsDel("felix_role"); }
+
 // ---- ページ共通の土台（通知・拡大表示・ナビ）----
-function initPage(activeKey){
+// need: "admin"（管理者のみ）/ "any"（誰でも。ログイン済みであること）
+function initPage(activeKey, need){
+  const role=getRole();
+  if(need && (!role || (need==="admin" && role.role!=="admin"))){ location.replace("home.html"); }
   document.body.insertAdjacentHTML("beforeend",`<div id="lb"><img alt=""></div><div id="toast"></div>`);
   $("#lb").onclick=()=>{$("#lb").style.display="none";};
   document.addEventListener("click",e=>{ const im=e.target.closest&&e.target.closest("[data-full]"); if(im){ $("#lb img").src=im.dataset.full; $("#lb").style.display="flex"; }});
-  const pages=[["properties","物件登録","properties.html"],["inspect","検査実施","inspect.html"],["verify","検査内容確認","verify.html"],["admin","是正ダッシュボード","admin.html"]];
+  const admin=[["home","ホーム","home.html?m=1"],["properties","物件登録","properties.html"],["inspect","検査実施","inspect.html"],["verify","検査内容確認","verify.html"],["admin","是正ダッシュボード","admin.html"],["done","完了分一覧","done.html"]];
+  const partner=[["home","ホーム","home.html?m=1"],["partner","是正実施","index.html"],["done","完了分一覧","done.html"]];
+  const pages=(role&&role.role==="partner")?partner:admin;
   document.querySelector("header").insertAdjacentHTML("afterend",`<nav id="nav">${pages.map(p=>`<a href="${p[2]}" class="${p[0]===activeKey?"on":""}">${p[1]}</a>`).join("")}</nav>`);
 }
 

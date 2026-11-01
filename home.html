@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Felix検査App ホーム（試作版）</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  .logo{text-align:center;color:var(--navy);font-weight:900;font-size:21px;margin:18px 0 6px}
+  .sub{text-align:center;color:var(--gray);font-size:13px;margin-bottom:24px}
+  .role{display:block;width:100%;max-width:340px;margin:12px auto;padding:18px;font-size:16px;font-weight:700;color:#fff;border:none;border-radius:10px;box-shadow:0 3px 8px #16324f2e;font-family:inherit}
+  .cnt{display:flex;gap:10px;margin-bottom:14px}
+  .cnt div{flex:1;border-radius:12px;padding:12px;text-align:center}
+  .cnt b{display:block;font-size:22px;font-weight:900}
+  .cnt small{font-size:11px;color:var(--gray);font-weight:700}
+  .menu{display:block;width:100%;text-align:center;padding:16px;margin:10px 0;border-radius:12px;background:#fff;border:1px solid var(--line);color:var(--navy);font-size:16px;font-weight:700;text-decoration:none}
+  .menu.main{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .menu.resume{background:#fff3cd;border-color:#ecd58a;color:#6b5400;font-size:14px}
+</style>
+</head>
+<body>
+<header><h1>Felix検査App</h1></header>
+<main>
+  <div class="banner">試作版：本番と同じデータにつながっています。試すときは「【テスト】」の物件だけを使ってください。</div>
+  <div id="view"></div>
+</main>
+<script src="templates.js"></script>
+<script src="common.js"></script>
+<script>
+const view=$("#view");
+document.body.insertAdjacentHTML("beforeend",`<div id="toast"></div>`);
+const FRESH_MS=12*3600*1000;
+const isMenuNav=/[?&]m=1/.test(location.search);   // メニューから来た場合は自動で前回の画面へ移動しない
+
+function renderLogin(){
+  view.innerHTML=`<div class="logo">ログインアカウントの選択</div><div class="sub">※一度選択すると、次回以降はこの画面をスキップして開きます。</div>
+    <button class="role" style="background:#16324F" data-r="admin">💻 管理者として入室</button>
+    <button class="role" style="background:#2C4F78" data-r="partner" data-a="東海エリア">🛠️ 協力業者 (東海エリア)</button>
+    <button class="role" style="background:#E8A33D;color:#2B2200" data-r="partner" data-a="関東エリア">🛠️ 協力業者 (関東エリア)</button>`;
+  view.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>{
+    setRole({role:b.dataset.r,area:b.dataset.a||""}); renderHome();
+  });
+}
+
+async function renderHome(){
+  const role=getRole(); if(!role){ renderLogin(); return; }
+  const admin=role.role==="admin";
+  view.innerHTML=`<div class="info">読み込み中…</div>`;
+  let h="";
+  try{
+    if(admin){
+      const recs=await sget("inspection_records","select=progress_status&progress_status=in.(確認待ち,是正待ち,是正確認中)");
+      const c=s=>recs.filter(r=>r.progress_status===s).length;
+      h+=`<div class="cnt"><div style="background:#E9F0FB"><b style="color:#2E5FA3">${c("確認待ち")}</b><small>確認待ち</small></div>
+        <div style="background:#FDECEC"><b style="color:#D64545">${c("是正待ち")}</b><small>是正待ち</small></div>
+        <div style="background:#FFF6E5"><b style="color:#B8790A">${c("是正確認中")}</b><small>是正確認中</small></div></div>`;
+    }else{
+      const [recs,ins,props]=await Promise.all([
+        sget("inspection_records","select=inspection_id&progress_status=eq.是正待ち"),
+        sget("inspections","select=inspection_id,property_id&is_deleted=eq.false"),
+        sget("properties","select=property_id,area&is_deleted=eq.false")]);
+      const areaOf={}; props.forEach(p=>areaOf[p.property_id]=p.area);
+      const inArea=new Set(ins.filter(i=>areaOf[i.property_id]===role.area).map(i=>i.inspection_id));
+      const n=recs.filter(r=>inArea.has(r.inspection_id)).length;
+      h+=`<div class="cnt"><div style="background:#FDECEC;padding:14px"><b style="color:#D64545;font-size:24px">${n}</b><small>対応が必要な指摘件数（${esc(role.area||"エリア未設定")}）</small></div></div>`;
+    }
+  }catch(e){ h+=`<div class="err">件数を読み込めませんでした。電波の良い場所でお試しください。</div>`; }
+
+  // 前回の続き
+  let resumeHref="", resumeText="";
+  if(admin){
+    try{ await IDB.open(); const s=(await IDB.get("meta","session"))?.v; if(s){ resumeHref="inspect.html"; resumeText=`前回の続きから再開する（${s.name} / ${s.type}）`; } }catch(e){}
+  }else{
+    try{
+      const d=JSON.parse(lsGet("felix_partner_session")||"null");
+      if(d&&d.prop&&d.type&&d.ts&&(Date.now()-d.ts)<FRESH_MS){
+        resumeHref="index.html#"+new URLSearchParams({p:d.prop,t:d.type}).toString();
+        resumeText=`前回の続きから再開する（${d.prop} / ${d.type}）`;
+        // 直接開いたとき（メニュー操作ではないとき）は、タップなしで前回の是正画面へ戻る
+        if(!isMenuNav && !document.referrer.includes("home.html")){ location.replace(resumeHref); return; }
+      }
+    }catch(e){}
+  }
+  if(resumeHref) h+=`<a class="menu resume" href="${esc(resumeHref)}">${esc(resumeText)}</a>`;
+  if(admin){
+    h+=`<a class="menu main" href="inspect.html">新規検査を開始する</a>
+      <a class="menu" href="properties.html">物件登録</a><a class="menu" href="verify.html">検査内容確認</a>
+      <a class="menu" href="admin.html">是正ダッシュボード</a><a class="menu" href="done.html">完了分一覧</a>
+      ${OLD_APP_URL?`<a class="menu" href="${esc(OLD_APP_URL)}" target="_blank">安全検証ツール（旧アプリで開く）</a>`:""}`;
+  }else{
+    h+=`<a class="menu main" href="index.html">新規是正を開始する</a><a class="menu" href="done.html">完了分一覧</a>`;
+  }
+  h+=`<div class="row"><button class="btn btn-sub" id="logout">ログアウト / アカウントの切り替え</button></div>`;
+  view.innerHTML=h;
+  $("#logout").onclick=()=>{ clearRole(); lsDel("felix_partner_session"); renderLogin(); };
+}
+renderHome();
+</script>
+</body>
+</html>
