@@ -102,8 +102,8 @@ async function renderList(fromCache){
   if(!any) h+=`<div class="info">該当する項目はありません。</div>`;
   view.innerHTML=h;
   view.querySelectorAll("[data-area]").forEach(b=>b.onclick=()=>{areaSel=b.dataset.area;renderList(true);});
-  const onq=e=>{ if(e.isComposing) return; q_search=e.target.value; renderList(true).then(()=>{const q=$("#q");q.focus();q.setSelectionRange(q.value.length,q.value.length);}); };
-  $("#q").oninput=onq; $("#q").addEventListener("compositionend",onq);   // 日本語の変換中は再描画しない（変換が壊れるため）
+  const onq=e=>{ if(e.isComposing) return; const old=e.target; q_search=old.value; renderList(true).then(()=>{ const nq=$("#q"); if(nq&&nq!==old){ nq.replaceWith(old); old.oninput=onq; old.oncompositionend=onq; } old.focus(); old.setSelectionRange(old.value.length,old.value.length); }); };
+  $("#q").oninput=onq; $("#q").oncompositionend=onq;   // 日本語の変換中は再描画しない（変換が壊れるため）
   view.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>go(b.dataset.p,b.dataset.t));
   // 物件ごと一括でゴミ箱へ（復元・完全削除は「安全検証ツール」で物件ごとにまとめて行える）
   view.querySelectorAll("[data-delp]").forEach(b=>b.onclick=async()=>{
