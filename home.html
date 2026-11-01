@@ -43,21 +43,21 @@ function renderLogin(){
   });
 }
 
-// 管理者の入室：合言葉をサーバー側（Edge Function）で照合する。画面側には合言葉を置かない
+// 管理者の入室：PASSをサーバー側（Edge Function）で照合する。画面側にはPASSを置かない
 function renderAdminPin(){
-  view.innerHTML=`<div class="logo">管理者の合言葉</div><div class="sub">※一度入室すると12時間は再入力不要です。</div>
+  view.innerHTML=`<div class="logo">管理者のPASS</div><div class="sub">※一度入室すると12時間は再入力不要です。</div>
     <div class="card"><div class="inner" style="padding-top:14px">
-      <input type="text" class="pwmask" id="apin" placeholder="合言葉を入力" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore>
+      <input type="text" class="pwmask" id="apin" placeholder="PASSを入力" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore>
       <button class="btn btn-primary" id="aok">入室する</button><div id="amsg"></div>
       <button class="btn btn-sub" id="aback">戻る</button></div></div>`;
   const go=async()=>{
-    const pin=$("#apin").value; if(!pin){ $("#amsg").innerHTML=`<div class="err">合言葉を入力してください</div>`; return; }
+    const pin=$("#apin").value; if(!pin){ $("#amsg").innerHTML=`<div class="err">PASSを入力してください</div>`; return; }
     const b=$("#aok"); spinBtn(b,"確認中…");
     try{
       await callAdmin(pin,"ping");
       try{ sessionStorage.setItem("felix_pin",pin); }catch(e){}   // 安全検証ツールで再入力しなくて済むように（この画面を閉じるまで）
       setRole({role:"admin",area:"",ts:Date.now()}); renderHome();
-    }catch(e){ unspinBtn(b); $("#amsg").innerHTML=`<div class="err">${esc(/合言葉/.test(e.message)?"合言葉が違います":"確認できませんでした。電波の良い場所でもう一度お試しください")}</div>`; }
+    }catch(e){ unspinBtn(b); $("#amsg").innerHTML=`<div class="err">${esc(/PASS|合言葉/.test(e.message)?"PASSが違います":"確認できませんでした。電波の良い場所でもう一度お試しください")}</div>`; }
   };
   $("#aok").onclick=go; $("#apin").onkeydown=e=>{ if(e.key==="Enter") go(); };
   $("#aback").onclick=renderLogin; $("#apin").focus();
@@ -110,6 +110,7 @@ async function renderHome(){
   }else{
     h+=`<a class="menu main" href="index.html">新規是正を開始する</a>`;
   }
+  if(admin&&OLD_APP_URL) h+=`<a class="menu" style="font-size:13px;padding:10px;color:var(--gray)" href="${esc(OLD_APP_URL)}" target="_blank" rel="noopener">旧アプリ（予備）を開く</a>`;
   h+=`<div class="row"><button class="btn btn-sub" id="logout">ログアウト / アカウントの切り替え</button></div>`;
   view.innerHTML=h;
   $("#logout").onclick=()=>{ clearRole(); lsDel("felix_partner_session"); try{ sessionStorage.removeItem("felix_pin"); }catch(e){} renderLogin(); };

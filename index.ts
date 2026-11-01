@@ -1,7 +1,7 @@
 // Felix検査App 管理用 Edge Function「felix-admin」
 // 目的：写真の「完全削除」など、秘密のキー（service role key）が必要な操作を、画面側に秘密を置かずに行う。
 // ・秘密のキーはSupabaseが自動で用意（SUPABASE_SERVICE_ROLE_KEY）。画面側には一切出ない。
-// ・合言葉（ADMIN_PIN）は、Supabaseの Secrets に登録した値とサーバー側で照合する。
+// ・PASS（ADMIN_PIN）は、Supabaseの Secrets に登録した値とサーバー側で照合する。
 // ・「ゴミ箱に入っているデータ」しか完全削除できない（誤って現役のデータを消せない作りにしている）。
 
 const CORS = {
@@ -32,7 +32,7 @@ function fileName(url: unknown): string | null {
   return n ? decodeURIComponent(n) : null;
 }
 
-// 合言葉の照合（文字数に関わらず同じ時間で比較）
+// PASSの照合（文字数に関わらず同じ時間で比較）
 function samePin(a: string, b: string): boolean {
   if (!b) return false;
   let diff = a.length ^ b.length;
@@ -169,7 +169,7 @@ export async function handler(req: Request): Promise<Response> {
   const pin = String(body.pin ?? "");
   if (!samePin(pin, env("ADMIN_PIN"))) {
     await new Promise((r) => setTimeout(r, 800)); // 総当たり対策に少し待たせる
-    return json({ error: "合言葉が違います" }, 401);
+    return json({ error: "PASSが違います" }, 401);
   }
   try {
     switch (body.action) {

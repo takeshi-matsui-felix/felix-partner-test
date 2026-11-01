@@ -179,8 +179,8 @@ function showError(root, msg, retry){
 }
 
 // ---- ログイン中の役割（home.html で選択。端末内に保存）----
-const OLD_APP_URL = "";   // 旧アプリ（Streamlit）のURL。安全検証ツールへの案内に使う。空なら表示しない
-const ADMIN_MS=12*3600*1000;   // 管理者の入室は12時間で切れる（合言葉の再入力）
+const OLD_APP_URL = "https://felix-app-prbmr4ghbjai7n7hzfyahj.streamlit.app/";   // 旧アプリ（Streamlit）のURL。安全検証ツールへの案内に使う。空なら表示しない
+const ADMIN_MS=12*3600*1000;   // 管理者の入室は12時間で切れる（PASSの再入力）
 function getRole(){
   try{
     const r=JSON.parse(lsGet("felix_role")||"null");

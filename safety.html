@@ -22,9 +22,9 @@
 <main>
   <div class="banner">試作版（管理者）：本番と同じデータにつながっています。完全削除は元に戻せません。</div>
   <div class="card"><div class="inner" style="padding-top:14px">
-    <div class="lab">管理用の合言葉（完全削除・容量確認に必要）</div>
-    <input type="text" class="pwmask" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore id="pin" placeholder="合言葉を入力">
-    <button class="btn btn-sub" id="pincheck">合言葉を確認する</button>
+    <div class="lab">管理用のPASS（完全削除・容量確認に必要）</div>
+    <input type="text" class="pwmask" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore id="pin" placeholder="PASSを入力">
+    <button class="btn btn-sub" id="pincheck">PASSを確認する</button>
     <div id="pinmsg"></div>
   </div></div>
   <div id="view"></div>
@@ -40,7 +40,7 @@ $("#pin").value=PIN;
 const getPin=()=>{ PIN=$("#pin").value; try{ sessionStorage.setItem("felix_pin",PIN); }catch(e){} return PIN; };
 $("#pincheck").onclick=async()=>{
   const b=$("#pincheck"); spinBtn(b,"確認中…");
-  try{ await callAdmin(getPin(),"ping"); $("#pinmsg").innerHTML=`<div class="info ok">合言葉を確認しました</div>`; }
+  try{ await callAdmin(getPin(),"ping"); $("#pinmsg").innerHTML=`<div class="info ok">PASSを確認しました</div>`; }
   catch(e){ $("#pinmsg").innerHTML=`<div class="err">${esc(e.message)}</div>`; }
   unspinBtn(b);
 };
@@ -104,7 +104,7 @@ async function render(){
     <button class="btn btn-primary" id="scan">🔍 容量を確認し、使われていない写真を照合する</button><div id="scanres"></div>`;
   view.innerHTML=h;
 
-  const need=()=>{ if(!getPin()){ toast("上の欄に合言葉を入力してください",false); return false; } return true; };
+  const need=()=>{ if(!getPin()){ toast("上の欄にPASSを入力してください",false); return false; } return true; };
   // 物件ごと削除されているなら物件を丸ごと、検査だけなら削除済みの検査を1件ずつ、完全に削除する
   const purgeGroup=async g=>{
     if(g.prop){ const r=await callAdmin(PIN,"purge_property",{id:g.key}); return {t:r.total,s:r.success,note:r.note}; }
@@ -158,7 +158,7 @@ async function render(){
   refreshBulk();
 
   $("#scan").onclick=async()=>{
-    if(!getPin()){ toast("上の欄に合言葉を入力してください",false); return; }
+    if(!getPin()){ toast("上の欄にPASSを入力してください",false); return; }
     const b=$("#scan"); spinBtn(b,"照合中…（数十秒かかることがあります）");
     try{
       const s=await callAdmin(PIN,"scan");
