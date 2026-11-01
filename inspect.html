@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>検査実施（管理者）試作版</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header><h1 id="ttl">検査開始</h1></header>
+<main>
+  <div class="banner">試作版（管理者）：本番と同じデータにつながっています。試すときは「【テスト】」の物件だけを使ってください。</div>
+  <div id="view"></div>
+</main>
+<script src="templates.js"></script>
+<script src="common.js"></script>
+<script>
+initPage("inspect");
+const view=$("#view");
+const OTHER="その他（フリー項目）";
+let SES=null;            // 実施中の検査（端末内に保存）{id,prop_id,name,type,inspector,date,prev_floor,prev_area}
+let PEND=[];             // 送信前の指摘（端末内に保存）
+let F=null;              // 入力中のフォーム
+let VIEW="start";        // start | capture | saved | review
+let PROPS=null;
+
+const kikan=()=>SES.type.startsWith("【検査機関】");
+const special=()=>SPECIAL.includes(SES.type);
+
+async function loadSession(){
+  SES=(await IDB.get("meta","session"))?.v||null;
+  PEND=SES?(await IDB.all("pending")).filter(r=>r.inspection_id===SES.id&&!r.sent).sort((a,b)=>a.saved_at-b.saved_at):[];
+}
+async function saveSession(){ await IDB.put("meta",{k:"session",v:SES}); }
+async function clearSession(){ if(SES) await IDB.clearPending(SES.id); await IDB.del("meta","session"); SES=null; PEND=[]; }
+
+async function main(){
+  try{ await IDB.open(); await loadSession(); }
+  catch(e){ view.innerHTML=`<div class="err">この端末の保存機能（IndexedDB）が使えません。プライベートモードを解除して開き直してください。</div>`; return; }
+  VIEW="start"; render();
+}
+
+function render(){
+  if(VIEW==="start") return renderStart();
+  if(VIEW==="capture") return renderCapture();
+  if(VIEW==="saved") return renderSaved();
+  if(VIEW==="review") return renderReview();
+}
+
+// ================= 検査開始 =================
+async function renderStart(){
+  $("#ttl").textContent="検査開始";
+  view.innerHTML=`<div class="info">読み込み中…</div>`;
+  try{ if(!PROPS) PROPS=sortProps(await sget("properties","select=*&is_deleted=eq.false")); }
+  catch(e){ showError(view,"通信に失敗しました。電波の良い場所でもう一度お試しください。（"+e.message+"）",()=>renderStart()); return; }
+  const hashProp=decodeURIComponent((location.hash.match(/prop=([^&]+)/)||[])[1]||"");
+  const pre=PROPS.find(p=>p.property_id===hashProp) || (SES&&PROPS.find(p=>p.property_id===SES.prop_id)) || PROPS[0];
+  let area=pre?.area||"東海エリア", propId=pre?.property_id||"", q="";
+  let h="";
+  if(SES){
+    h+=`<div class="info warn"><b>前回の検査の続きがあります</b><br>${esc(SES.name)} / ${esc(SES.type)}（未送信 ${PEND.length}件）
+      <div class="btns row"><button class="btn btn-primary" id="resume">続きから再開</button><button class="btn btn-danger" id="discard">破棄する</button></div></div>`;
+  }
+  h+=`<div class="lab">エリアを選択</div>${chips("s_area",["東海エリア","関東エリア"],area)}
+    <div class="lab">物件名で検索（一部入力でも可）</div><input type="text" id="s_q" placeholder="物件名の一部">
+    <div class="lab">物件を選択 <span style="font-weight:400;color:var(--gray)">（引渡し日が近い順）</span></div><select id="s_prop"></select>
+    <div class="lab">検査種類を選択</div><select id="s_type"><option value="">-- 選択 --</option>${INSP_OPTS.map(o=>`<option>${esc(o)}</option>`).join("")}</select>
+    <div class="btns"><div><div class="lab">検査日時</div><input type="date" id="s_date" value="${todayISO()}"></div>
+    <div><div class="lab">検査員</div><select id="s_insp">${INSPECTOR_OPTS.map(o=>`<option>${esc(o)}</option>`).join("")}</select></div></div>
+    <button class="btn btn-primary" id="s_go">検査スタート</button>`;
+  view.innerHTML=h;
+  const fillProps=()=>{
+    area=chipVal(view,"s_area"); q=$("#s_q").value.trim();
+    const list=PROPS.filter(p=>p.area===area&&(!q||p.property_name.includes(q)));
+    $("#s_prop").innerHTML=`<option value="">-- 選択 --</option>`+list.map(p=>`<option value="${esc(p.property_id)}" ${p.property_id===propId?"selected":""}>${esc(p.property_name)}${p.handover_date?` (引渡し: ${esc(p.handover_date)})`:" (引渡し未設定)"}</option>`).join("");
+  };
+  fillProps();
+  $$('input[name="s_area"]').forEach(r=>r.onchange=()=>{propId="";fillProps();});
+  $("#s_q").oninput=fillProps;
+  $("#s_prop").onchange=e=>{propId=e.target.value;};
+  $("#resume")?.addEventListener("click",()=>{ VIEW="capture"; F=newForm(); render(); });
+  $("#discard")?.addEventListener("click",async()=>{
+    if(!confirm(`未送信の ${PEND.length}件 を含め、前回の検査の続きを破棄します。元に戻せません。よろしいですか？`)) return;
+    await clearSession(); toast("破棄しました"); renderStart();
+  });
+  $("#s_go").onclick=async()=>{
+    const pid=$("#s_prop").value, type=$("#s_type").value;
+    if(!pid||!type){ toast("物件と検査種類を選んでください",false); return; }
+    if(SES&&PEND.length&&!confirm(`前回の検査に未送信の ${PEND.length}件 があります。破棄して新しく始めますか？`)) return;
+    const p=PROPS.find(x=>x.property_id===pid), nid=uuid(), date=$("#s_date").value, insp=$("#s_insp").value;
+    spinBtn($("#s_go"),"通信中…");
+    try{
+      await spost("inspections",{inspection_id:nid,property_id:pid,property_name:p.property_name,inspection_type:type,inspection_date:date,inspector:insp});
+      await clearSession();
+      SES={id:nid,prop_id:pid,name:p.property_name,type,inspector:insp,date,prev_floor:null,prev_area:null};
+      await saveSession(); PEND=[]; F=newForm(); VIEW="capture"; render();
+    }catch(e){ unspinBtn($("#s_go")); toast("通信エラー：サーバーとの接続に失敗しました。電波の良い場所でもう一度お試しください",false); }
+  };
+}
+
+// ================= 指摘の入力 =================
+function newForm(){
+  const f=special()||kikan()?"一式":(FLOOR_OPTS.includes(SES.prev_floor)?SES.prev_floor:FLOOR_OPTS[0]);
+  const a=special()||kikan()?"全体":(areaOpts(SES.type).includes(SES.prev_area)?SES.prev_area:areaOpts(SES.type)[0]);
+  const x={floor:f,area:a,cat:null,temp:null,desc:"",work:null,photo:null,_k:""};
+  normalizeForm(x); return x;
+}
+function normalizeForm(x){
+  const wo=workOpts(SES.type);
+  let defW=wo[0];
+  if(!kikan()){
+    const cd=catDict(SES.type,x.area), keys=Object.keys(cd);
+    if(keys.length){
+      if(!keys.includes(x.cat)) x.cat=keys[0];
+      const tl=Object.keys(cd[x.cat]).concat([OTHER]);
+      if(!tl.includes(x.temp)) x.temp=tl[0];
+      if(x.temp!==OTHER){ const w=normW(cd[x.cat][x.temp]); if(wo.includes(w)) defW=w; }
+    }else{ x.cat=null; x.temp=null; }
+  }
+  const key=x.cat+"|"+x.temp;
+  if(x._k!==key){ x._k=key; x.work=defW; }
+  if(!wo.includes(x.work)) x.work=defW;
+}
+function finalDesc(x){
+  const d=x.desc.trim();
+  if(x.temp===OTHER) return d;
+  return x.temp?(x.temp+(d?"："+d:"")):d;
+}
+function locStr(x){ const p=[x.floor,x.area]; if(!kikan()&&x.cat) p.push(x.cat); return p.join(" ").trim(); }
+
+function renderCapture(){
+  $("#ttl").textContent=`${SES.name} / ${SES.type}`;
+  view.innerHTML=`<button class="btn btn-sub" id="back">⬅ 戻る</button>
+    <div class="info">未送信 ${PEND.length}件（この端末に保存中）</div><div id="form"></div>`;
+  $("#back").onclick=()=>{ VIEW="start"; render(); };
+  drawForm();
+}
+function drawForm(){
+  normalizeForm(F);
+  const wo=workOpts(SES.type);
+  let h="";
+  if(!kikan()&&!special()){
+    h+=`<div class="lab">階層を選択</div>${chips("f_floor",FLOOR_OPTS,F.floor)}<div class="lab">部位を選択</div>${chips("f_area",areaOpts(SES.type),F.area)}`;
+  }
+  if(!kikan()){
+    const cd=catDict(SES.type,F.area), keys=Object.keys(cd);
+    if(keys.length){
+      h+=`<div class="lab">分類を選択</div>${chips("f_cat",keys,F.cat)}<div class="lab">よくある指摘事項</div>${chips("f_temp",Object.keys(cd[F.cat]).concat([OTHER]),F.temp)}`;
+    }
+  }
+  h+=`<div class="lab">詳細・場所の追記（${kikan()?"自由入力":"自由入力"}）</div><textarea rows="3" id="f_desc" placeholder="${kikan()?"具体的な指摘内容や場所を入力してください":""}">${esc(F.desc)}</textarea>
+    <div class="lab">工種を選択</div>${chips("f_work",wo,F.work)}
+    <div class="lab">現場写真の追加（黒板自動合成）</div>${camButtons("data-cam","new")}
+    <div id="prev">${F.photo?`<img class="pic s" src="${F.photo.url}" alt="プレビュー">`:""}</div>
+    <div class="row"><button class="btn btn-primary" id="tmp">この内容で一時保存（通信なし）</button></div>`;
+  $("#form").innerHTML=h;
+  const read=()=>{
+    const g=n=>{const v=chipVal($("#form"),n);return v;};
+    if(g("f_floor")) F.floor=g("f_floor"); if(g("f_area")) F.area=g("f_area");
+    if(g("f_cat")) F.cat=g("f_cat"); if(g("f_temp")) F.temp=g("f_temp"); if(g("f_work")) F.work=g("f_work");
+  };
+  ["f_floor","f_area","f_cat","f_temp"].forEach(n=>$$(`input[name="${n}"]`).forEach(r=>r.onchange=()=>{ read(); if(n==="f_area"){F.cat=null;F.temp=null;} if(n==="f_cat"){F.temp=null;} F.desc=$("#f_desc").value; drawForm(); }));
+  $$('input[name="f_work"]').forEach(r=>r.onchange=()=>{F.work=r.value;});
+  $("#f_desc").oninput=e=>{F.desc=e.target.value;};
+  $$("[data-cam]").forEach(inp=>inp.onchange=async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    $("#prev").innerHTML=`<div class="info">写真を処理中…</div>`;
+    try{
+      F.desc=$("#f_desc").value;
+      const board={propName:SES.name,inspType:SES.type,inspDate:todayStr(),locationText:locStr(F),issueDetail:cut80(finalDesc(F))};
+      const set=await makePhotoSet(f,board,"insp");
+      if(F.photo) URL.revokeObjectURL(F.photo.url);
+      F.photo={...set,url:URL.createObjectURL(set.full)};
+      $("#prev").innerHTML=`<img class="pic s" src="${F.photo.url}" alt="プレビュー">`;
+    }catch(err){ $("#prev").innerHTML=`<div class="err">写真を読み込めませんでした。もう一度お試しください。</div>`; }
+  });
+  $("#tmp").onclick=async()=>{
+    F.desc=$("#f_desc").value; read();
+    const fd=finalDesc(F);
+    if(!F.work||fd===""||!F.photo){ toast("工種・内容・写真はすべて必須です",false); return; }
+    spinBtn($("#tmp"),"保存中…");
+    try{
+      const rec={temp_id:uuid(),record_id:uuid(),inspection_id:SES.id,property_id:SES.prop_id,floor_level:F.floor,area:F.area,work_type:F.work,issue_detail:fd,full:F.photo.full,thumb:F.photo.thumb,saved_at:Date.now(),sent:false,loc:locStr(F)};
+      await IDB.put("pending",rec); PEND.push(rec);
+      SES.prev_floor=F.floor; SES.prev_area=F.area; await saveSession();
+      URL.revokeObjectURL(F.photo.url);
+      toast("一時保存しました（まだサーバーには送信されていません）");
+      VIEW="saved"; render();
+    }catch(e){ unspinBtn($("#tmp")); toast("この端末への保存に失敗しました。空き容量を確認してください",false); }
+  };
+}
+
+// ================= 一時保存後 =================
+function renderSaved(){
+  $("#ttl").textContent=`${SES.name} / ${SES.type}`;
+  view.innerHTML=`<div class="info ok">一時保存しました（まだサーバーには送信されていません）。未送信 ${PEND.length}件</div>
+    <div class="row"><button class="btn btn-primary" id="next">続けて次を登録</button></div>
+    <div class="row"><button class="btn btn-sub" id="review">保存データを確認・修正</button></div>
+    <div class="row"><button class="btn btn-amber" id="send">内容を保存して検査を終了する（サーバーへ送信）</button></div>
+    <div id="sendmsg"></div>`;
+  $("#next").onclick=()=>{ F=newForm(); VIEW="capture"; render(); };
+  $("#review").onclick=()=>{ VIEW="review"; render(); };
+  $("#send").onclick=sendAll;
+}
+
+// ================= 送信（送れた分は記録し、失敗分だけ再送）=================
+async function sendAll(){
+  const btn=$("#send");
+  if(!PEND.length){ await finish(); return; }
+  spinBtn(btn,"送信中…（画面を閉じないでください）");
+  const initial=["工事監理チーム","検査機関"].includes(SES.inspector)?"確認待ち":"是正待ち";
+  let ng=0, done=0; const total=PEND.length;
+  for(const rec of [...PEND]){
+    $("#sendmsg").innerHTML=`<div class="info">送信中… ${done+ng+1} / ${total}</div>`;
+    try{
+      const base=rec.record_id;
+      const url=await upload(rec.full,`${base}.jpg`);
+      let th=url; try{ th=await upload(rec.thumb,`${base}_thumb.jpg`); }catch(e){}
+      await spost("inspection_records",{record_id:rec.record_id,inspection_id:rec.inspection_id,property_id:rec.property_id,floor_level:rec.floor_level,area:rec.area,work_type:rec.work_type,issue_detail:rec.issue_detail,progress_status:initial,issue_photo_url:url,issue_photo_thumb_url:th});
+      await IDB.del("pending",rec.temp_id); PEND=PEND.filter(x=>x.temp_id!==rec.temp_id); done++;
+    }catch(e){ ng++; }
+  }
+  if(ng===0){ toast(`すべてのデータ（${done}件）を正常に保存しました`); await finish(); }
+  else{
+    unspinBtn(btn);
+    toast(`${ng}件の送信に失敗しました。電波の良い場所でもう一度「終了する」を押してください`,false);
+    $("#sendmsg").innerHTML=`<div class="err">送信できたのは ${done}件、未送信が ${ng}件 残っています。データは端末内に残っています。電波の良い場所でもう一度押してください（送信済みの分は重複しません）。</div>`;
+  }
+}
+async function finish(){ await clearSession(); VIEW="start"; PROPS=null; location.hash=""; render(); }
+
+// ================= 確認・修正 =================
+async function renderReview(){
+  $("#ttl").textContent=`${SES.name} / ${SES.type}`;
+  view.innerHTML=`<button class="btn btn-sub" id="back">⬅ 戻る</button><h3 style="color:var(--navy)">今回の検査で記録した指摘データ</h3><div id="pend"></div><div id="srv"><div class="info">読み込み中…</div></div>`;
+  $("#back").onclick=()=>{ VIEW="saved"; render(); };
+  const drawPend=()=>{
+    const urls=[];
+    $("#pend").innerHTML=PEND.length?`<div class="info warn">⚠️ この端末内に一時保存中のデータ（終了ボタンで一括送信されます）</div>`+PEND.map(r=>{
+      const u=URL.createObjectURL(r.full); urls.push(u);
+      const head=(kikan()||r.floor_level==="一式")?"":`【${r.floor_level} ${r.area}】`.trim();
+      return `<div class="rec unsent"><h3>${esc(head?head+" "+r.issue_detail:"【指摘内容】 "+r.issue_detail)}</h3><img class="pic s" src="${u}" alt="">
+        <div class="row"><button class="btn btn-danger" data-delp="${esc(r.temp_id)}">この未送信データを削除（撮り直す場合）</button></div></div>`;
+    }).join(""):"";
+    $$("[data-delp]").forEach(b=>b.onclick=async()=>{
+      if(!confirm("この未送信データを削除します。よろしいですか？")) return;
+      await IDB.del("pending",b.dataset.delp); PEND=PEND.filter(x=>x.temp_id!==b.dataset.delp); toast("削除しました"); drawPend();
+    });
+  };
+  drawPend();
+  try{
+    const recs=await sget("inspection_records",`inspection_id=eq.${SES.id}`);
+    let h=`<h4 style="color:var(--navy)">サーバーへ送信済みの過去データ</h4>`;
+    if(!recs.length){ $("#srv").innerHTML=h+`<div class="info">サーバーに保存された過去の指摘データはありません。</div>`; return; }
+    if(SHANAI.includes(SES.type)){
+      const fl=[...new Set(recs.map(r=>r.floor_level).filter(Boolean))].sort();
+      h+=`<div class="lab">部屋（階層）で絞り込み</div><select id="ffloor"><option>すべて表示</option>${fl.map(f=>`<option>${esc(f)}</option>`).join("")}</select>`;
+    }
+    h+=`<div id="srecs"></div>`;
+    $("#srv").innerHTML=h;
+    const draw=()=>{
+      const ff=$("#ffloor")?.value; let list=recs;
+      if(ff&&ff!=="すべて表示") list=list.filter(r=>r.floor_level===ff);
+      $("#srecs").innerHTML=sortRecs(list).map(r=>{
+        const head=(kikan()||r.floor_level==="一式")?"":`【${r.floor_level||""} ${r.area||""}】`.trim();
+        return `<div class="rec" data-id="${esc(r.record_id)}"><h3>${esc(head?head+" "+(r.issue_detail||""):"【指摘内容】 "+(r.issue_detail||""))}</h3>
+          ${r.issue_photo_url?`<img class="pic" src="${esc(r.issue_photo_thumb_url||r.issue_photo_url)}" data-full="${esc(r.issue_photo_url)}" alt="">`:""}${editorHtml(r,SES.type)}</div>`;
+      }).join("");
+      bindEditor($("#srecs"),recs,SES.type,SES.name,()=>renderReview());
+    };
+    $("#ffloor")?.addEventListener("change",draw); draw();
+  }catch(e){ $("#srv").innerHTML=`<div class="err">サーバーのデータを読み込めませんでした。電波の良い場所でお試しください。</div>`; }
+}
+main();
+</script>
+</body>
+</html>

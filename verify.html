@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>検査内容確認（管理者）試作版</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header><h1 id="ttl">検査内容確認 ＆ 最終修正</h1></header>
+<main>
+  <div class="banner">試作版（管理者）：本番と同じデータにつながっています。試すときは「【テスト】」の物件だけを使ってください。</div>
+  <div id="view"></div>
+</main>
+<script src="templates.js"></script>
+<script src="common.js"></script>
+<script>
+initPage("verify");
+const view=$("#view");
+let areaSel=lsGet("felix_admin_area")||"すべて表示", q_search="", LC=null;
+
+function route(){ const q=new URLSearchParams(location.hash.replace(/^#/,"")); return {p:q.get("p"),t:q.get("t")}; }
+function go(p,t){ const q=new URLSearchParams(); if(p&&t){q.set("p",p);q.set("t",t);} location.hash=q.toString(); }
+window.addEventListener("hashchange",()=>render());
+
+async function render(){
+  const {p,t}=route();
+  view.innerHTML=`<div class="info">読み込み中…</div>`;
+  try{ if(p&&t) await renderDetail(p,t); else await renderList(false); }
+  catch(e){ showError(view,"通信に失敗しました。もう一度お試しください。（"+e.message+"）",()=>render()); }
+}
+
+async function renderList(fromCache){
+  $("#ttl").textContent="検査内容確認 ＆ 最終修正";
+  if(!(fromCache&&LC)){
+    const [recs,ins,props]=await Promise.all([
+      sget("inspection_records","select=inspection_id,progress_status&progress_status=eq.確認待ち"),
+      sget("inspections","select=*&is_deleted=eq.false"),
+      sget("properties","select=*&is_deleted=eq.false")]);
+    LC={recs,ins,props:sortProps(props)};
+  }
+  const {recs,ins,props}=LC;
+  const areaOf={},hdate={}; props.forEach(x=>{areaOf[x.property_id]=x.area;hdate[x.property_id]=x.handover_date;});
+  const insMap={}; ins.forEach(i=>insMap[i.inspection_id]=i);
+  const tree={};
+  recs.forEach(r=>{
+    const i=insMap[r.inspection_id]; if(!i) return;
+    if(areaSel!=="すべて表示"&&areaOf[i.property_id]!==areaSel) return;
+    const pn=i.property_name||"不明", tn=i.inspection_type||"不明";
+    tree[pn] ??= {prop_id:i.property_id,types:{}};
+    tree[pn].types[tn]=(tree[pn].types[tn]||0)+1;
+  });
+  const order=props.map(x=>x.property_name).filter(n=>tree[n]);
+  Object.keys(tree).forEach(n=>{ if(!order.includes(n)) order.push(n); });
+  let h=`<div class="seg">${["すべて表示","東海エリア","関東エリア"].map(a=>`<button data-area="${a}" class="${a===areaSel?"on":""}">${a}</button>`).join("")}</div>
+    <input type="text" id="q" placeholder="物件名で検索（一部入力でも可）" value="${esc(q_search)}">`;
+  let any=false;
+  order.forEach(pn=>{
+    if(q_search&&!pn.includes(q_search)) return; any=true;
+    const node=tree[pn], hd=hdate[node.prop_id]?` (引渡し: ${esc(hdate[node.prop_id])})`:" (引渡し未設定)";
+    h+=`<details class="card"><summary><span class="nm">${esc(pn)}${hd}</span></summary><div class="inner">
+      ${Object.entries(node.types).map(([tn,c])=>`<button class="btn btn-sub" style="margin-bottom:8px;text-align:left" data-p="${esc(pn)}" data-t="${esc(tn)}">${esc(tn)} (${c}件)</button>`).join("")}</div></details>`;
+  });
+  if(!any) h+=`<div class="info">現在、該当する確認待ちの検査はありません。</div>`;
+  view.innerHTML=h;
+  view.querySelectorAll("[data-area]").forEach(b=>b.onclick=()=>{areaSel=b.dataset.area;lsSet("felix_admin_area",areaSel);renderList(true);});
+  $("#q").oninput=e=>{q_search=e.target.value;renderList(true).then(()=>{const q=$("#q");q.focus();q.setSelectionRange(q.value.length,q.value.length);});};
+  view.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>go(b.dataset.p,b.dataset.t));
+}
+
+async function renderDetail(pn,tn){
+  $("#ttl").textContent=pn;
+  const [ins,props]=await Promise.all([sget("inspections","select=*&is_deleted=eq.false"),sget("properties","select=*&is_deleted=eq.false")]);
+  const ids=ins.filter(i=>i.property_name===pn&&i.inspection_type===tn).map(i=>i.inspection_id);
+  if(!ids.length){ go(); return; }
+  const recs=await sget("inspection_records",`inspection_id=in.(${ids.join(",")})&progress_status=eq.確認待ち`);
+  const others=sortProps(props).filter(x=>x.property_name!==pn);
+  let h=`<button class="btn btn-sub" id="back">⬅ 戻る</button>`;
+  if(recs.length&&SHANAI.includes(tn)){
+    const fl=[...new Set(recs.map(r=>r.floor_level).filter(Boolean))].sort();
+    h+=`<div class="lab">部屋（階層）で絞り込み</div><select id="ffloor"><option>すべて表示</option>${fl.map(f=>`<option>${esc(f)}</option>`).join("")}</select>`;
+  }
+  if(recs.length){
+    const ws=[...new Set(recs.map(r=>r.work_type||"その他"))].sort();
+    h+=`<div class="lab">🛠️ 担当工種で絞り込む</div><select id="fwork"><option>すべて表示</option>${ws.map(f=>`<option>${esc(f)}</option>`).join("")}</select>`;
+  }
+  h+=`<div class="info" id="cnt"></div>${moveHtml(others)}<div id="bulk"></div><div id="recs"></div>`;
+  view.innerHTML=h;
+  $("#back").onclick=()=>go();
+  bindMove(others,ids,()=>{LC=null;go();});
+
+  const draw=()=>{
+    const ff=$("#ffloor")?.value, fw=$("#fwork")?.value;
+    let list=recs;
+    if(ff&&ff!=="すべて表示") list=list.filter(r=>r.floor_level===ff);
+    if(fw&&fw!=="すべて表示") list=list.filter(r=>(r.work_type||"その他")===fw);
+    list=sortRecs(list);
+    $("#cnt").textContent=`この検査（${pn} / ${tn}）には、現在 ${list.length}件 のデータがあります。`;
+    $("#bulk").innerHTML=list.length?`<button class="btn btn-primary" id="bulkbtn" style="margin-top:6px">この検査をすべて承認して業者（是正実施）に送る</button>`:"";
+    $("#bulkbtn")?.addEventListener("click",()=>{
+      $("#bulk").innerHTML=`<div class="err">最終確認： ${list.length}件を「是正待ち」にして、協力業者へ表示します。よろしいですか？</div>
+        <div class="btns"><button class="btn btn-primary" id="by">はい、承認を確定します</button><button class="btn btn-sub" id="bn">キャンセル</button></div>`;
+      $("#bn").onclick=draw;
+      $("#by").onclick=async()=>{
+        spinBtn($("#by"),"処理中…"); let ng=0;
+        for(const r of list){ try{ await spatch("inspection_records","record_id",r.record_id,{progress_status:"是正待ち"}); }catch(e){ ng++; } }
+        LC=null;
+        if(ng){ toast(`一括承認：${ng}件が失敗しました。再度お試しください`,false); render(); }
+        else { toast(`${list.length}件を承認しました。協力業者へ表示されます`); go(); }
+      };
+    });
+    const groups={}; list.forEach(r=>(groups[r.work_type||"その他"] ??= []).push(r));
+    let rh="";
+    Object.entries(groups).forEach(([w,rs])=>{
+      rh+=`<div class="w">■ 工種: ${esc(w)}</div>`;
+      rs.forEach(r=>{
+        const floor=r.floor_level||"", area=r.area||"", detail=r.issue_detail||"";
+        const head=(tn.startsWith("【検査機関】")||floor==="一式")?"":`【${floor} ${area}】`.trim();
+        const title=head?`${head} ${detail}`:`【指摘内容】 ${detail}`;
+        rh+=`<div class="rec" data-id="${esc(r.record_id)}"><h3>${esc(title)}</h3>
+          ${r.issue_photo_url?`<img class="pic" src="${esc(r.issue_photo_thumb_url||r.issue_photo_url)}" data-full="${esc(r.issue_photo_url)}" alt="">`:`<div class="nophoto">写真なし</div>`}
+          ${editorHtml(r,tn)}
+          <div class="row"><button class="btn btn-primary" data-ok="${esc(r.record_id)}">個別承認（業者へ送る）</button></div></div>`;
+      });
+    });
+    if(!list.length) rh=`<div class="info">該当する確認待ちの指摘はありません。</div>`;
+    $("#recs").innerHTML=rh;
+    $$("[data-ok]").forEach(btn=>btn.onclick=async()=>{
+      spinBtn(btn,"処理中…");
+      try{ await spatch("inspection_records","record_id",btn.dataset.ok,{progress_status:"是正待ち"}); LC=null; toast("承認しました（業者へ送りました）"); render(); }
+      catch(e){ unspinBtn(btn); toast("承認に失敗しました。もう一度押してください",false); }
+    });
+    bindEditor($("#recs"),recs,tn,pn,()=>{LC=null;render();});
+  };
+  $("#ffloor")?.addEventListener("change",draw);
+  $("#fwork")?.addEventListener("change",draw);
+  draw();
+}
+render();
+</script>
+</body>
+</html>

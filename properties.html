@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>物件登録（管理者）試作版</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header><h1>物件登録</h1></header>
+<main>
+  <div class="banner">試作版（管理者）：本番と同じデータにつながっています。試すときは「【テスト】」の物件だけを使ってください。</div>
+  <div id="view"></div>
+</main>
+<script src="templates.js"></script>
+<script src="common.js"></script>
+<script>
+initPage("properties");
+const view = $("#view");
+let areaSel = "すべて表示";
+let editTarget = null, delTarget = null;
+let DATA = null;
+
+async function load(){
+  const [props, ins, recs] = await Promise.all([
+    sget("properties","select=*&is_deleted=eq.false"),
+    sget("inspections","select=inspection_id,property_id&is_deleted=eq.false"),
+    sget("inspection_records","select=inspection_id,progress_status")
+  ]);
+  const insToProp={}; ins.forEach(i=>insToProp[i.inspection_id]=i.property_id);
+  const withData=new Set(), counts={};
+  recs.forEach(r=>{
+    const pid=insToProp[r.inspection_id]; if(!pid) return;
+    withData.add(r.inspection_id);
+    const c=counts[pid] ??= {total:0,done:0}; c.total++; if(r.progress_status==="完了") c.done++;
+  });
+  const insCount={}; ins.forEach(i=>{ if(withData.has(i.inspection_id)) insCount[i.property_id]=(insCount[i.property_id]||0)+1; });
+  return {props:sortProps(props), counts, insCount, ins};
+}
+
+async function render(useCache){
+  view.innerHTML=`<div class="info">読み込み中…</div>`;
+  try{
+    DATA=(useCache&&DATA)?DATA:await load();
+    draw();
+  }catch(e){ showError(view,"通信に失敗しました。もう一度お試しください。（"+e.message+"）",()=>render()); }
+}
+
+function draw(){
+  const {props,counts,insCount}=DATA;
+  let h=`<div class="card"><div class="inner" style="padding-top:14px">
+    <div class="lab">エリアを選択</div>${chips("new_area",["東海エリア","関東エリア"],"東海エリア")}
+    <div class="lab">新規物件名</div><input type="text" id="new_name" placeholder="物件名を入力">
+    <label style="display:block;margin:6px 0"><input type="checkbox" id="new_hchk"> 引渡し日を設定する</label>
+    <input type="date" id="new_hdate" value="${todayISO()}" style="display:none">
+    <button class="btn btn-primary" id="addbtn">登録</button></div></div>
+    <h3 style="margin:22px 0 8px;color:var(--navy)">登録済み物件一覧</h3>
+    <div class="seg">${["すべて表示","東海エリア","関東エリア"].map(a=>`<button data-area="${a}" class="${a===areaSel?"on":""}">${a}</button>`).join("")}</div>`;
+  props.forEach(p=>{
+    const id=p.property_id; if(!id) return;
+    const pa=p.area||"未設定";
+    if(areaSel!=="すべて表示" && pa!==areaSel) return;
+    const hd=p.handover_date?`引渡${p.handover_date}`:"引渡未定";
+    const ic=insCount[id]||0, cnt=ic>0?`${ic}件`:"データなし";
+    h+=`<div class="prow"><button class="pname ${pa==="関東エリア"?"kanto":""}" data-start="${esc(id)}">${esc(p.property_name)}｜${hd}｜${cnt}</button>
+      <button class="btn btn-sub btn-s" data-edit="${esc(id)}">変更</button><button class="btn btn-sub btn-s" data-del="${esc(id)}">削除</button></div>`;
+    const c=counts[id];
+    if(c&&c.total>0){ const pct=Math.floor(c.done/c.total*100); h+=`<div class="bar"><i><b style="width:${pct}%;background:${pct===100?"#2E9E64":"#E8A33D"}"></b></i><span>完了 ${c.done}/${c.total}</span></div>`; }
+    if(editTarget===id){
+      const has=!!(p.handover_date&&p.handover_date.trim());
+      h+=`<div class="info warn">「${esc(p.property_name)}」の内容を変更します。過去のデータ名も連動して更新されます。</div>
+        <div class="lab">物件名</div><input type="text" id="e_name" value="${esc(p.property_name)}">
+        <label style="display:block;margin:6px 0"><input type="checkbox" id="e_hchk" ${has?"checked":""}> 引渡し日を設定する</label>
+        <input type="date" id="e_hdate" value="${esc(has?p.handover_date:todayISO())}" style="${has?"":"display:none"}">
+        <div class="btns"><button class="btn btn-primary" id="e_save">保存</button><button class="btn btn-sub" id="e_cancel">キャンセル</button></div><hr>`;
+    }
+    if(delTarget===id){
+      h+=`<div id="delbox" data-id="${esc(id)}"><div class="info">確認中…</div></div><hr>`;
+    }
+  });
+  view.innerHTML=h;
+
+  $("#new_hchk").onchange=e=>{ $("#new_hdate").style.display=e.target.checked?"":"none"; };
+  $("#addbtn").onclick=async()=>{
+    const name=$("#new_name").value.trim(); if(!name){ toast("物件名を入力してください",false); return; }
+    const area=chipVal(document,"new_area");
+    const hd=$("#new_hchk").checked?$("#new_hdate").value:null;
+    spinBtn($("#addbtn"),"登録中…");
+    try{ await spost("properties",{property_id:uuid(),property_name:name,area,handover_date:hd}); toast(`[${area}] に登録しました`); DATA=null; render(); }
+    catch(e){ unspinBtn($("#addbtn")); toast("登録に失敗しました。もう一度押してください",false); }
+  };
+  view.querySelectorAll("[data-area]").forEach(b=>b.onclick=()=>{areaSel=b.dataset.area; draw();});
+  view.querySelectorAll("[data-start]").forEach(b=>b.onclick=()=>{ location.href="inspect.html#prop="+encodeURIComponent(b.dataset.start); });
+  view.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{editTarget=b.dataset.edit; delTarget=null; draw();});
+  view.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{delTarget=b.dataset.del; editTarget=null; draw(); startDelete(b.dataset.del);});
+  if(editTarget){
+    $("#e_hchk").onchange=e=>{ $("#e_hdate").style.display=e.target.checked?"":"none"; };
+    $("#e_cancel").onclick=()=>{editTarget=null; draw();};
+    $("#e_save").onclick=async()=>{
+      const p=props.find(x=>x.property_id===editTarget); const nn=$("#e_name").value.trim();
+      if(!nn){ toast("物件名を入力してください",false); return; }
+      const nh=$("#e_hchk").checked?$("#e_hdate").value:null;
+      spinBtn($("#e_save"),"保存中…");
+      try{
+        await spatch("properties","property_id",editTarget,{property_name:nn,handover_date:nh});
+        if(nn!==p.property_name) await spatch("inspections","property_id",editTarget,{property_name:nn});
+        toast("変更を保存しました"); editTarget=null; DATA=null; render();
+      }catch(e){ unspinBtn($("#e_save")); toast("変更の保存に失敗しました。もう一度押してください",false); }
+    };
+  }
+}
+
+// 削除：完了分一覧から削除（PDF保存確認）前の検査データが残っている物件は消せない（旧アプリと同じ規則）
+async function startDelete(id){
+  const box=$("#delbox"); if(!box) return;
+  const p=DATA.props.find(x=>x.property_id===id);
+  try{
+    const ins=await sget("inspections",`property_id=eq.${id}&is_deleted=eq.false&select=inspection_id,inspection_type`);
+    let active=[];
+    if(ins.length){
+      const ids=ins.map(i=>i.inspection_id);
+      const recs=await sget("inspection_records",`inspection_id=in.(${ids.join(",")})&select=inspection_id`);
+      const cnt={}; recs.forEach(r=>cnt[r.inspection_id]=(cnt[r.inspection_id]||0)+1);
+      active=ins.filter(i=>cnt[i.inspection_id]>0).map(i=>({type:i.inspection_type,count:cnt[i.inspection_id]}));
+    }
+    if(active.length){
+      box.innerHTML=`<div class="err">「${esc(p.property_name)}」はまだ削除できません。以下の検査データが、完了分一覧からまだ削除（PDF保存確認済み）されていません：<br>${active.map(a=>`・${esc(a.type)}（${a.count}件）`).join("<br>")}<br><br>各部署で内容を確認・PDF保存の上、完了分一覧の「ゴミ箱に移動する」から削除された後に、物件自体を削除できるようになります。</div>
+        <button class="btn btn-sub" id="d_close">閉じる</button>`;
+      $("#d_close").onclick=()=>{delTarget=null; draw();};
+    }else{
+      box.innerHTML=`<div class="info warn">「${esc(p.property_name)}」をゴミ箱に移動します。データは完全には消えず、後から復元できます（管理者の「安全検証ツール」から）。</div>
+        <input type="password" id="d_pw" placeholder="削除用パスワード">
+        <div class="btns"><button class="btn btn-danger" id="d_yes">Yes（ゴミ箱へ移動）</button><button class="btn btn-sub" id="d_no">キャンセル</button></div>`;
+      $("#d_no").onclick=()=>{delTarget=null; draw();};
+      $("#d_yes").onclick=async()=>{
+        if($("#d_pw").value!==DELETE_PASSWORD){ toast("パスワードが違います",false); return; }
+        spinBtn($("#d_yes"),"処理中…");
+        try{ await spatch("properties","property_id",id,{is_deleted:true}); toast("ゴミ箱へ移動しました"); delTarget=null; DATA=null; render(); }
+        catch(e){ unspinBtn($("#d_yes")); toast("ゴミ箱への移動に失敗しました。もう一度押してください",false); }
+      };
+    }
+  }catch(e){ box.innerHTML=`<div class="err">確認に失敗しました。もう一度お試しください。</div>`; }
+}
+render();
+</script>
+</body>
+</html>
