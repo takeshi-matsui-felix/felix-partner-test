@@ -68,3 +68,5 @@ details.sub summary{cursor:pointer;font-weight:700;font-size:14px}
 #toast.ok{background:#1f8a57}#toast.ng{background:#c0392b}
 .sp{display:inline-block;width:14px;height:14px;border:2px solid #fff7;border-top-color:#fff;border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}
 @keyframes s{to{transform:rotate(360deg)}}
+
+.pwmask{-webkit-text-security:disc;text-security:disc}

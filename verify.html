@@ -53,7 +53,7 @@ async function renderList(fromCache){
   const order=props.map(x=>x.property_name).filter(n=>tree[n]);
   Object.keys(tree).forEach(n=>{ if(!order.includes(n)) order.push(n); });
   let h=`<div class="seg">${["すべて表示","東海エリア","関東エリア"].map(a=>`<button data-area="${a}" class="${a===areaSel?"on":""}">${a}</button>`).join("")}</div>
-    <input type="text" id="q" placeholder="物件名で検索（一部入力でも可）" value="${esc(q_search)}">`;
+    <input type="text" id="q" name="felix-search" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="物件名で検索（一部入力でも可）" value="${esc(q_search)}">`;
   let any=false;
   order.forEach(pn=>{
     if(q_search&&!pn.includes(q_search)) return; any=true;

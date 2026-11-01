@@ -234,7 +234,7 @@ async function renderList(){
   lsDel("felix_partner_session");
   const {tree, order, hdate} = await loadTree();
   let html = `<div class="info ok">現在の表示エリア：【 ${esc(AREA)} 】</div>
-    <input type="text" id="q" placeholder="物件名で検索（一部入力でも可）" value="${esc(q_search)}">`;
+    <input type="text" id="q" name="felix-search" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="物件名で検索（一部入力でも可）" value="${esc(q_search)}">`;
   let any = false;
   order.forEach(pn => {
     if(q_search && !pn.includes(q_search)) return;

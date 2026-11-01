@@ -129,7 +129,7 @@ async function startDelete(id){
       $("#d_close").onclick=()=>{delTarget=null; draw();};
     }else{
       box.innerHTML=`<div class="info warn">「${esc(p.property_name)}」をゴミ箱に移動します。データは完全には消えず、後から復元できます（管理者の「安全検証ツール」から）。</div>
-        <input type="password" id="d_pw" placeholder="削除用パスワード">
+        <input type="text" class="pwmask" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore id="d_pw" placeholder="削除用パスワード">
         <div class="btns"><button class="btn btn-danger" id="d_yes">Yes（ゴミ箱へ移動）</button><button class="btn btn-sub" id="d_no">キャンセル</button></div>`;
       $("#d_no").onclick=()=>{delTarget=null; draw();};
       $("#d_yes").onclick=async()=>{

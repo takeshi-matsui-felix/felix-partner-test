@@ -89,7 +89,7 @@ async function renderList(fromCache){
   Object.keys(tree).forEach(n=>{ if(!order.includes(n)) order.push(n); });
   let h="";
   if(IS_ADMIN) h+=`<div class="seg">${["すべて表示","東海エリア","関東エリア"].map(a=>`<button data-area="${a}" class="${a===areaSel?"on":""}">${a}</button>`).join("")}</div>`;
-  h+=`<input type="text" id="q" placeholder="物件名で検索（一部入力でも可）" value="${esc(q_search)}">`;
+  h+=`<input type="text" id="q" name="felix-search" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="物件名で検索（一部入力でも可）" value="${esc(q_search)}">`;
   let any=false;
   order.forEach(pn=>{
     if(q_search&&!pn.includes(q_search)) return; any=true;
@@ -97,7 +97,7 @@ async function renderList(fromCache){
     h+=`<details class="card"><summary><span class="nm">${esc(pn)} ${hd}</span></summary><div class="inner">
       ${Object.entries(node.types).map(([tn,c])=>`<button class="btn btn-sub" style="margin-bottom:8px;text-align:left" data-p="${esc(pn)}" data-t="${esc(tn)}">${esc(tn)} (完了: ${c}件)</button>`).join("")}
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:10px"><div class="lab">この物件をまとめて削除（全検査をゴミ箱へ）</div>
-      <input type="password" class="dpw2" placeholder="削除用パスワード" autocomplete="off"><button class="btn btn-danger" data-delp="${esc(pn)}">🗑️ この物件の検査をすべてゴミ箱へ移動</button></div></div></details>`;
+      <input type="text" class="pwmask dpw2" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore placeholder="削除用パスワード"><button class="btn btn-danger" data-delp="${esc(pn)}">🗑️ この物件の検査をすべてゴミ箱へ移動</button></div></div></details>`;
   });
   if(!any) h+=`<div class="info">該当する項目はありません。</div>`;
   view.innerHTML=h;
@@ -140,7 +140,7 @@ async function renderDetail(pn,tn){
   if(IS_ADMIN){
     h+=`<div class="delbox admin-only"><h3>完了物件の削除（管理者専用）</h3>
       <div style="font-size:14px">この検査記録の保存（上の「印刷／PDFとして保存」）が完了しましたら、一覧を整理するためにここから削除できます。<br><b>※削除してもデータは完全には消えず、後から「安全検証ツール」画面で復元できます。</b></div>
-      <input type="password" id="dpw" placeholder="削除用パスワード" style="margin-top:10px">
+      <input type="text" class="pwmask" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore id="dpw" placeholder="削除用パスワード" style="margin-top:10px">
       <button class="btn btn-danger" id="dbtn">この検査（${esc(tn)}）をゴミ箱に移動する</button></div>`;
   }
   if(partial) h+=`<div class="btns noprint" style="margin-bottom:12px"><button class="btn btn-sub" id="more">もっと見る（次の20件）</button><button class="btn btn-primary" id="all">全件を画面に表示する</button></div>`;
