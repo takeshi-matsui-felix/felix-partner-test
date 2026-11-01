@@ -64,7 +64,8 @@ async function renderList(fromCache){
   if(!any) h+=`<div class="info">現在、該当する確認待ちの検査はありません。</div>`;
   view.innerHTML=h;
   view.querySelectorAll("[data-area]").forEach(b=>b.onclick=()=>{areaSel=b.dataset.area;lsSet("felix_admin_area",areaSel);renderList(true);});
-  $("#q").oninput=e=>{q_search=e.target.value;renderList(true).then(()=>{const q=$("#q");q.focus();q.setSelectionRange(q.value.length,q.value.length);});};
+  const onq=e=>{ if(e.isComposing) return; q_search=e.target.value; renderList(true).then(()=>{const q=$("#q");q.focus();q.setSelectionRange(q.value.length,q.value.length);}); };
+  $("#q").oninput=onq; $("#q").addEventListener("compositionend",onq);   // 日本語の変換中は再描画しない（変換が壊れるため）
   view.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>go(b.dataset.p,b.dataset.t));
 }
 

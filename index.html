@@ -253,7 +253,8 @@ async function renderList(){
   });
   if(!any) html += `<div class="info">該当する対応必要項目はありません。</div>`;
   view.innerHTML = html;
-  $("#q").oninput = e => { q_search = e.target.value; renderList(); $("#q").focus(); };
+  const onq = e => { if(e.isComposing) return; q_search = e.target.value; renderList().then(() => { const q = $("#q"); if(q){ q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }); };
+  $("#q").oninput = onq; $("#q").addEventListener("compositionend", onq);   // 日本語の変換中は再描画しない
   view.querySelectorAll(".type-btn").forEach(b => b.onclick = () => go(b.dataset.p, b.dataset.t));
 }
 

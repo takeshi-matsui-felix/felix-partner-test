@@ -84,10 +84,10 @@ async function render(){
   if(!D.props.length) h+=`<div class="info">削除済みの物件はありません。</div>`;
   D.props.forEach(p=>{
     h+=`<div class="trow"><div class="hd"><input type="checkbox" data-sp="${esc(p.property_id)}" ${sel.props.has(p.property_id)?"checked":""}>
-      <div><div class="nm">[${esc(p.area||"未設定")}] ${esc(p.property_name||"不明")}</div><div class="ph">📷 写真${D.propCnt[p.property_id]||0}枚</div></div></div>
+      <div><div class="nm">[${esc(p.area||"未設定")}] ${esc(p.property_name||"不明")}</div><div class="ph">📷 写真${D.propCnt[p.property_id]||0}枚</div>${D.ins.some(i=>i.property_id===p.property_id)?`<div class="ph" style="color:#B8790A">※この物件の検査が、下の「検査単位」のゴミ箱にも${D.ins.filter(i=>i.property_id===p.property_id).length}件あります。物件を復元しても、検査は自動では戻りません。完了分一覧に出すには、検査も復元してください。</div>`:""}</div></div>
       <div class="btns row"><button class="btn btn-sub" data-rp="${esc(p.property_id)}">↩️ 復元する</button><button class="btn btn-danger" data-pp="${esc(p.property_id)}">🔥 完全に削除</button></div></div>`;
   });
-  if(sel.props.size) h+=`<button class="btn btn-danger" id="bulkp">🔥 選択した${sel.props.size}件の物件をまとめて完全に削除する</button>`;
+  h+=`<div id="bwp"></div>`;
   h+=`<h3 class="sec">🗑️ ゴミ箱（検査単位）</h3><div class="cap">完了分一覧から削除された検査です（物件名順）</div>`;
   if(!D.ins.length) h+=`<div class="info">削除済みの検査はありません。</div>`;
   D.ins.forEach(i=>{
@@ -95,13 +95,13 @@ async function render(){
       <div><div class="nm">${esc(i.property_name||"不明")} / ${esc(i.inspection_type||"不明")}</div><div class="ph">📷 写真${D.insCnt[i.inspection_id]||0}枚</div></div></div>
       <div class="btns row"><button class="btn btn-sub" data-ri="${esc(i.inspection_id)}">↩️ 復元する</button><button class="btn btn-danger" data-pi="${esc(i.inspection_id)}">🔥 完全に削除</button></div></div>`;
   });
-  if(sel.ins.size) h+=`<button class="btn btn-danger" id="bulki">🔥 選択した${sel.ins.size}件の検査をまとめて完全に削除する</button>`;
+  h+=`<div id="bwi"></div>`;
   h+=`<h3 class="sec">📦 保存容量と、使われていない写真の照合</h3><div class="cap">写真の保存容量（無料枠は1GB）と、どのデータにも紐づかない写真を調べます</div>
     <button class="btn btn-primary" id="scan">🔍 容量を確認し、使われていない写真を照合する</button><div id="scanres"></div>`;
   view.innerHTML=h;
 
-  view.querySelectorAll("[data-sp]").forEach(c=>c.onchange=()=>{ c.checked?sel.props.add(c.dataset.sp):sel.props.delete(c.dataset.sp); render(); });
-  view.querySelectorAll("[data-si]").forEach(c=>c.onchange=()=>{ c.checked?sel.ins.add(c.dataset.si):sel.ins.delete(c.dataset.si); render(); });
+  view.querySelectorAll("[data-sp]").forEach(c=>c.onchange=()=>{ c.checked?sel.props.add(c.dataset.sp):sel.props.delete(c.dataset.sp); refreshBulk(); });
+  view.querySelectorAll("[data-si]").forEach(c=>c.onchange=()=>{ c.checked?sel.ins.add(c.dataset.si):sel.ins.delete(c.dataset.si); refreshBulk(); });
   view.querySelectorAll("[data-rp]").forEach(b=>b.onclick=async()=>{ spinBtn(b,"復元中…"); try{ await spatch("properties","property_id",b.dataset.rp,{is_deleted:false}); toast("物件を復元しました"); render(); }catch(e){ unspinBtn(b); toast("復元に失敗しました。もう一度押してください",false); }});
   view.querySelectorAll("[data-ri]").forEach(b=>b.onclick=async()=>{ spinBtn(b,"復元中…"); try{ await spatch("inspections","inspection_id",b.dataset.ri,{is_deleted:false}); toast("検査を復元しました"); render(); }catch(e){ unspinBtn(b); toast("復元に失敗しました。もう一度押してください",false); }});
 
@@ -133,8 +133,14 @@ async function render(){
     if(ng) toast(`${ng}件で失敗しました（${lastNote}）。写真${S}/${T}枚は削除済みです`,false); else toast(`すべて完全に削除しました（写真${S}/${T}枚）`);
     render();
   };
-  $("#bulkp")?.addEventListener("click",()=>bulk($("#bulkp"),sel.props,"purge_property","物件"));
-  $("#bulki")?.addEventListener("click",()=>bulk($("#bulki"),sel.ins,"purge_inspection","検査"));
+  // チェックを入れても画面全体は読み込み直さない（位置が一番上に戻らないように、まとめて削除ボタンだけ差し替える）
+  function refreshBulk(){
+    $("#bwp").innerHTML=sel.props.size?`<button class="btn btn-danger" id="bulkp">🔥 選択した${sel.props.size}件の物件をまとめて完全に削除する</button>`:"";
+    $("#bwi").innerHTML=sel.ins.size?`<button class="btn btn-danger" id="bulki">🔥 選択した${sel.ins.size}件の検査をまとめて完全に削除する</button>`:"";
+    $("#bulkp")?.addEventListener("click",()=>bulk($("#bulkp"),sel.props,"purge_property","物件"));
+    $("#bulki")?.addEventListener("click",()=>bulk($("#bulki"),sel.ins,"purge_inspection","検査"));
+  }
+  refreshBulk();
 
   $("#scan").onclick=async()=>{
     if(!getPin()){ toast("上の欄に合言葉を入力してください",false); return; }
@@ -147,11 +153,12 @@ async function render(){
         <small>目安：850MB超で削除、950MB超でProプランを検討</small></div>`;
       if(!s.orphans.length) r+=`<div class="info ok">✨ どのデータにも紐づかない写真は0枚です。ストレージはきれいな状態です。</div>`;
       else r+=`<div class="info warn">⚠️ どこにも紐づかない写真が <b>${s.orphans.length}枚</b>（約${(s.orphan_bytes/1048576).toFixed(1)}MB）見つかりました。
-        <details style="margin-top:6px"><summary>ファイル名（先頭10件）</summary>${s.orphans.slice(0,10).map(n=>`<div style="font-size:12px">${esc(n)}</div>`).join("")}</details></div>
+        <div style="margin-top:6px;font-size:13px">削除する前に、写真を開いて中身を確認し、次の手順で別の方法でも照合してください（案内を参照）。</div>
+        <details style="margin-top:6px"><summary>ファイル名（先頭20件・タップで写真を開く）</summary>${s.orphans.slice(0,20).map(n=>`<div style="font-size:12px;margin:4px 0"><a href="${SB_URL}/storage/v1/object/public/photos/${encodeURIComponent(n)}" target="_blank">${esc(n)}</a></div>`).join("")}</details>${s.recent_skipped?`<div style="font-size:12px;margin-top:6px">※24時間以内にアップされた写真 ${s.recent_skipped}枚 は、送信の途中の可能性があるため、数えていません。</div>`:""}</div>
         <button class="btn btn-danger" id="delorph">🔥 使われていない写真 ${s.orphans.length}枚を削除する</button>`;
       $("#scanres").innerHTML=r;
       $("#delorph")?.addEventListener("click",async()=>{
-        if(!confirm(`使われていない写真 ${s.orphans.length}枚 を削除します。よろしいですか？`)) return;
+        if(!confirm(`使われていない写真 ${s.orphans.length}枚（約${(s.orphan_bytes/1048576).toFixed(1)}MB）を削除します。元に戻せません。別の方法での照合は済みましたか？`)) return;
         const d=$("#delorph"); spinBtn(d,"削除中…");
         try{ const x=await callAdmin(PIN,"delete_orphans",{names:s.orphans}); toast(`${x.success}枚の写真を削除しました`+(x.skipped?`（${x.skipped}枚は使われていたため残しました）`:"")); $("#scan").click(); }
         catch(e){ unspinBtn(d); toast("削除に失敗しました："+e.message,false); }

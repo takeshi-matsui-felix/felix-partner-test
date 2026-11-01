@@ -75,8 +75,8 @@ async function storageRemove(names: string[]): Promise<{ total: number; success:
   }
   return { total: uniq.length, success };
 }
-async function storageList(): Promise<{ name: string; size: number }[]> {
-  const out: { name: string; size: number }[] = [];
+async function storageList(): Promise<{ name: string; size: number; created: number }[]> {
+  const out: { name: string; size: number; created: number }[] = [];
   const limit = 1000;
   for (let offset = 0; ; offset += limit) {
     const r = await fetch(`${BASE()}/storage/v1/object/list/photos`, {
@@ -86,7 +86,7 @@ async function storageList(): Promise<{ name: string; size: number }[]> {
     });
     if (!r.ok) throw new Error(`Storage一覧取得失敗 (${r.status})`);
     const items = await r.json();
-    for (const it of items) if (it && it.name && it.id) out.push({ name: it.name, size: Number(it.metadata?.size || 0) });
+    for (const it of items) if (it && it.name && it.id) out.push({ name: it.name, size: Number(it.metadata?.size || 0), created: Date.parse(it.created_at || it.updated_at || "") || 0 });
     if (items.length < limit) break;
   }
   return out;
@@ -138,13 +138,18 @@ async function purgeInspection(iid: string) {
 async function scan() {
   const files = await storageList();
   const used = new Set(namesFromRecords(await restAll(`inspection_records?select=${PHOTO_COLS.join(",")}`)));
-  const orphans = files.filter((f) => !used.has(f.name));
+  // 24時間以内にアップされた写真は「送信の途中」の可能性があるため、使われていない写真には数えない
+  const limit = Date.now() - 24 * 3600 * 1000;
+  const unused = files.filter((f) => !used.has(f.name));
+  const orphans = unused.filter((f) => !f.created || f.created < limit);
   const totalBytes = files.reduce((a, f) => a + f.size, 0);
   return {
     files: files.length,
     bytes: totalBytes,
+    used_names: used.size,
     orphans: orphans.map((o) => o.name),
     orphan_bytes: orphans.reduce((a, f) => a + f.size, 0),
+    recent_skipped: unused.length - orphans.length,
   };
 }
 async function deleteOrphans(names: string[]) {

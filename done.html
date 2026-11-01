@@ -65,7 +65,7 @@ async function render(){
 }
 
 async function renderList(fromCache){
-  $("#ttl").textContent="完了分一覧";
+  $("#ttl").textContent="完了分一覧"; document.title="完了分一覧 試作版";
   if(!(fromCache&&LC)){
     const [recs,ins,props]=await Promise.all([
       sget("inspection_records","select=inspection_id,progress_status&progress_status=eq.完了"),
@@ -100,12 +100,15 @@ async function renderList(fromCache){
   if(!any) h+=`<div class="info">該当する項目はありません。</div>`;
   view.innerHTML=h;
   view.querySelectorAll("[data-area]").forEach(b=>b.onclick=()=>{areaSel=b.dataset.area;renderList(true);});
-  $("#q").oninput=e=>{q_search=e.target.value;renderList(true).then(()=>{const q=$("#q");q.focus();q.setSelectionRange(q.value.length,q.value.length);});};
+  const onq=e=>{ if(e.isComposing) return; q_search=e.target.value; renderList(true).then(()=>{const q=$("#q");q.focus();q.setSelectionRange(q.value.length,q.value.length);}); };
+  $("#q").oninput=onq; $("#q").addEventListener("compositionend",onq);   // 日本語の変換中は再描画しない（変換が壊れるため）
   view.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>go(b.dataset.p,b.dataset.t));
 }
 
 async function renderDetail(pn,tn){
   $("#ttl").textContent=pn;
+  // PDF保存時のファイル名：「物件名＋社内検査チェックリスト」（社内検査以外は検査名＋チェックリスト）
+  document.title=(pn+(SHANAI.includes(tn)?"社内検査":tn)+"チェックリスト").replace(/[\\/:*?"<>|]/g,"");
   const ins=await sget("inspections","select=*&is_deleted=eq.false");
   const mine=ins.filter(i=>i.property_name===pn&&i.inspection_type===tn);
   if(!mine.length){ go(); return; }

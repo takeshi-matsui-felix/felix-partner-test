@@ -267,7 +267,8 @@ async function renderList(fromCache){
   view.innerHTML=html;
 
   view.querySelectorAll("[data-area]").forEach(b=>b.onclick=()=>{areaSel=b.dataset.area; lsSet("felix_admin_area",areaSel); renderList(true);});
-  $("#q").oninput=e=>{q_search=e.target.value; renderList(true).then(()=>{const q=$("#q"); q.focus(); q.setSelectionRange(q.value.length,q.value.length);});};
+  const onq=e=>{ if(e.isComposing) return; q_search=e.target.value; renderList(true).then(()=>{const q=$("#q");q.focus();q.setSelectionRange(q.value.length,q.value.length);}); };
+  $("#q").oninput=onq; $("#q").addEventListener("compositionend",onq);   // 日本語の変換中は再描画しない（変換が壊れるため）
   view.querySelectorAll(".type-btn").forEach(b=>b.onclick=()=>go(b.dataset.p,b.dataset.t));
   view.querySelectorAll(".delay").forEach(inp=>inp.onchange=async()=>{
     try{ for(const id of inp.dataset.ids.split(",").filter(Boolean)) await spatch("inspections","inspection_id",id,{delay_reason:inp.value}); toast("遅延理由を保存しました"); }
