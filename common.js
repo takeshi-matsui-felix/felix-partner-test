@@ -71,9 +71,15 @@ async function spatch(table, col, val, body){
   if(!r.ok) throw new Error(`更新失敗 (${r.status})`);
 }
 async function upload(blob, name){
+  // ※upsert（上書き）は使わない：この保存先は「新規追加」のみ許可されているため
   const r = await fetch(`${SB_URL}/storage/v1/object/photos/${name}`, {
-    method:"POST", headers:{...H,"Content-Type":"image/jpeg","Cache-Control":"public, max-age=31536000, immutable","x-upsert":"true"}, body: blob});
-  if(!r.ok) throw new Error(`写真アップロード失敗 (${r.status})`);
+    method:"POST", headers:{...H,"Content-Type":"image/jpeg","Cache-Control":"public, max-age=31536000, immutable"}, body: blob});
+  if(!r.ok){
+    let body=""; try{ body=await r.text(); }catch(e){}
+    // 同じ名前の写真がすでにある＝前回の送信で届いている。成功として扱う（再送しても二重にならない）
+    if(/Duplicate|already exists|"statusCode":"?409/i.test(body)) return `${SB_URL}/storage/v1/object/public/photos/${name}`;
+    throw new Error(`写真アップロード失敗 (${r.status}) ${body.slice(0,120)}`);
+  }
   return `${SB_URL}/storage/v1/object/public/photos/${name}`;
 }
 

@@ -209,7 +209,7 @@ async function sendAll(){
   if(!PEND.length){ await finish(); return; }
   spinBtn(btn,"送信中…（画面を閉じないでください）");
   const initial=["工事監理チーム","検査機関"].includes(SES.inspector)?"確認待ち":"是正待ち";
-  let ng=0, done=0; const total=PEND.length;
+  let ng=0, done=0, lastErr=""; const total=PEND.length;
   for(const rec of [...PEND]){
     $("#sendmsg").innerHTML=`<div class="info">送信中… ${done+ng+1} / ${total}</div>`;
     try{
@@ -218,13 +218,13 @@ async function sendAll(){
       let th=url; try{ th=await upload(rec.thumb,`${base}_thumb.jpg`); }catch(e){}
       await spost("inspection_records",{record_id:rec.record_id,inspection_id:rec.inspection_id,property_id:rec.property_id,floor_level:rec.floor_level,area:rec.area,work_type:rec.work_type,issue_detail:rec.issue_detail,progress_status:initial,issue_photo_url:url,issue_photo_thumb_url:th});
       await IDB.del("pending",rec.temp_id); PEND=PEND.filter(x=>x.temp_id!==rec.temp_id); done++;
-    }catch(e){ ng++; }
+    }catch(e){ ng++; lastErr=e.message; }
   }
   if(ng===0){ toast(`すべてのデータ（${done}件）を正常に保存しました`); await finish(); }
   else{
     unspinBtn(btn);
     toast(`${ng}件の送信に失敗しました。電波の良い場所でもう一度「終了する」を押してください`,false);
-    $("#sendmsg").innerHTML=`<div class="err">送信できたのは ${done}件、未送信が ${ng}件 残っています。データは端末内に残っています。電波の良い場所でもう一度押してください（送信済みの分は重複しません）。</div>`;
+    $("#sendmsg").innerHTML=`<div class="err">送信できたのは ${done}件、未送信が ${ng}件 残っています。データは端末内に残っています。電波の良い場所でもう一度押してください（送信済みの分は重複しません）。<br><small>原因：${esc(lastErr)}</small></div>`;
   }
 }
 async function finish(){ await clearSession(); VIEW="start"; PROPS=null; location.hash=""; render(); }
