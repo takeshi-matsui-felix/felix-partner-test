@@ -95,7 +95,9 @@ async function renderList(fromCache){
     if(q_search&&!pn.includes(q_search)) return; any=true;
     const node=tree[pn], hd=hdate[node.prop_id]?`（引渡し日: ${esc(hdate[node.prop_id])}）`:"（引渡し日: 未設定）";
     h+=`<details class="card"><summary><span class="nm">${esc(pn)} ${hd}</span></summary><div class="inner">
-      ${Object.entries(node.types).map(([tn,c])=>`<button class="btn btn-sub" style="margin-bottom:8px;text-align:left" data-p="${esc(pn)}" data-t="${esc(tn)}">${esc(tn)} (完了: ${c}件)</button>`).join("")}</div></details>`;
+      ${Object.entries(node.types).map(([tn,c])=>`<button class="btn btn-sub" style="margin-bottom:8px;text-align:left" data-p="${esc(pn)}" data-t="${esc(tn)}">${esc(tn)} (完了: ${c}件)</button>`).join("")}
+      <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:10px"><div class="lab">この物件をまとめて削除（全検査をゴミ箱へ）</div>
+      <input type="password" class="dpw2" placeholder="削除用パスワード" autocomplete="off"><button class="btn btn-danger" data-delp="${esc(pn)}">🗑️ この物件の検査をすべてゴミ箱へ移動</button></div></div></details>`;
   });
   if(!any) h+=`<div class="info">該当する項目はありません。</div>`;
   view.innerHTML=h;
@@ -103,6 +105,21 @@ async function renderList(fromCache){
   const onq=e=>{ if(e.isComposing) return; q_search=e.target.value; renderList(true).then(()=>{const q=$("#q");q.focus();q.setSelectionRange(q.value.length,q.value.length);}); };
   $("#q").oninput=onq; $("#q").addEventListener("compositionend",onq);   // 日本語の変換中は再描画しない（変換が壊れるため）
   view.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>go(b.dataset.p,b.dataset.t));
+  // 物件ごと一括でゴミ箱へ（復元・完全削除は「安全検証ツール」で物件ごとにまとめて行える）
+  view.querySelectorAll("[data-delp]").forEach(b=>b.onclick=async()=>{
+    const pn=b.dataset.delp, pw=b.parentElement.querySelector(".dpw2").value;
+    if(pw!==DELETE_PASSWORD){ toast("パスワードが違います",false); return; }
+    const mine=LC.ins.filter(i=>i.property_name===pn), ids=mine.map(i=>i.inspection_id);
+    spinBtn(b,"確認中…");
+    let other=0;
+    try{ for(let k=0;k<ids.length;k+=50) other+=(await sget("inspection_records",`inspection_id=in.(${ids.slice(k,k+50).join(",")})&progress_status=neq.完了&select=record_id`)).length; }
+    catch(e){ unspinBtn(b); toast("確認に失敗しました。もう一度押してください",false); return; }
+    const done=Object.values(tree[pn]?.types||{}).reduce((a,c)=>a+c,0);
+    if(!confirm(`「${pn}」の検査${mine.length}件（完了${done}件${other?`／完了以外の指摘${other}件も含む`:""}）をすべてゴミ箱へ移動します。\n復元・完全削除は「安全検証ツール」で行えます。よろしいですか？`)){ unspinBtn(b); return; }
+    spinBtn(b,"処理中…");
+    try{ for(const id of ids) await spatch("inspections","inspection_id",id,{is_deleted:true}); LC=null; toast(`「${pn}」をゴミ箱に移動しました`); render(); }
+    catch(e){ unspinBtn(b); toast("ゴミ箱への移動に失敗しました。もう一度押してください",false); }
+  });
 }
 
 async function renderDetail(pn,tn){
