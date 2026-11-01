@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>是正ダッシュボード（管理者）試作版</title>
+<style>
+  :root{--navy:#16324F;--blue:#2C4F78;--amber:#E8A33D;--bg:#F3F5F8;--line:#D9DEE6;--red:#C0392B;--green:#2E9E64;--gray:#6B7482}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Noto Sans JP','Hiragino Sans',Meiryo,sans-serif;background:var(--bg);color:#1d2733;-webkit-text-size-adjust:100%}
+  header{background:var(--navy);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:10}
+  header h1{font-size:17px;margin:0}
+  main{padding:14px 14px 80px;max-width:820px;margin:0 auto}
+  .banner{background:#fff3cd;border:1px solid #ecd58a;color:#6b5400;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:12px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+  .card>summary{padding:14px;font-weight:700;cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center}
+  .card>summary::-webkit-details-marker{display:none}
+  .card>summary .nm{flex:1}
+  .copy{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;font-size:13px}
+  .type-btn{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;margin:0 0 4px;font-size:15px;font-weight:700;color:var(--navy)}
+  .badge{font-size:13px;color:var(--red);margin:0 2px 6px}
+  .inner{padding:0 14px 8px}
+  .btn{border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;width:100%}
+  .btn-primary{background:var(--navy);color:#fff}
+  .btn-amber{background:var(--amber);color:#2B2200}
+  .btn-danger{background:#fff;border:1px solid var(--red);color:var(--red)}
+  .btn-sub{background:#fff;border:1px solid var(--line);color:var(--navy)}
+  .btn:disabled{opacity:.5}
+  .info{background:#e8f1fb;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:14px}
+  .ok{background:#e6f6ec;color:#1c6b40}
+  .warn{background:#fff3cd;color:#6b5400}
+  .err{background:#fdecea;color:var(--red);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:14px}
+  .over{color:var(--red);font-weight:700}
+  .rec{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:14px}
+  .rec h3{font-size:15px;margin:0 0 8px;line-height:1.5}
+  .st{font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;margin-left:6px;white-space:nowrap}
+  .st.wait{background:#FDECEC;color:#D64545}.st.conf{background:#E9F0FB;color:#2E5FA3}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cols h4{font-size:12px;margin:0 0 6px;color:var(--gray)}
+  .cols img{width:100%;border-radius:8px;border:1px solid var(--line);display:block}
+  .nophoto{height:90px;display:flex;align-items:center;justify-content:center;background:#eef0f4;border-radius:8px;color:var(--gray);font-size:13px}
+  .reject{background:#fdecea;color:var(--red);padding:8px 10px;border-radius:8px;font-size:13px;margin-bottom:8px}
+  .btns{display:flex;gap:10px}.btns label{flex:1}
+  label.cam{display:flex;align-items:center;justify-content:center;gap:6px;border-radius:10px;padding:12px;font-weight:700;font-size:14px;cursor:pointer;color:#fff}
+  label.cam input{display:none}
+  label.cam.lib{background:#27AE60}label.cam.shot{background:#2980B9}
+  .row{margin-top:10px}
+  select,input[type=text],textarea{width:100%;padding:11px;border-radius:8px;border:1px solid var(--line);font-size:15px;margin:4px 0 10px;background:#fff;font-family:inherit}
+  .area-h{margin:20px 0 10px;border-bottom:1px solid #000;font-weight:700;font-size:16px;padding-bottom:4px}
+  .seg{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+  .seg button{flex:1;padding:10px;border:1px solid var(--line);background:#fff;border-radius:8px;font-size:14px}
+  .seg button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+  details.sub{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0;background:#fff}
+  details.sub summary{cursor:pointer;font-weight:700;font-size:14px}
+  #lb{display:none;position:fixed;inset:0;background:#0a0f19ee;z-index:100;align-items:center;justify-content:center;padding:16px}
+  #lb img{max-width:96vw;max-height:94vh;border-radius:8px}
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;display:none;z-index:200}
+  .sp{display:inline-block;width:14px;height:14px;border:2px solid #fff7;border-top-color:#fff;border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header><h1 id="ttl">是正ダッシュボード（確認・実施）</h1></header>
+<main>
+  <div class="banner">試作版（管理者）：本番と同じデータにつながっています。試すときは「【テスト】」の物件だけを使ってください。</div>
+  <div id="view"></div>
+</main>
+<div id="lb"><img alt=""></div>
+<div id="toast"></div>
+
+<script>
+const SB_URL = "https://vzuzeymvyftmfuaxrvtb.supabase.co";
+const SB_KEY = "sb_publishable_2y-rvfayu8BYs0oo-UOzGA_EQTBYLxm";
+const H = {apikey: SB_KEY, Authorization: "Bearer " + SB_KEY};
+const SHANAI = ["社内検査(設計)", "社内検査(建設)", "社内検査(マーケ)", "社内検査(不動産)"];
+const AREA_ORDER = ["玄関","トイレ","キッチン","バルコニー","LDK","洋室","洗面室","UB","廊下・階段・ENT","外部","フリー項目"];
+const WORK_ORDER = ["A.リペア","B.清掃","C.クロス","D.造作","E.水道","F.電気","G.キッチン","H.サッシ","I.外壁","J.外構","K.コーキング","L.ガス","板金","Z.その他"];
+const WORK_SHANAI = ["A.リペア","B.清掃","C.クロス","D.造作","E.水道","F.電気","G.キッチン","H.サッシ","I.外壁","J.外構","K.コーキング","L.ガス","板金","Z.その他"];
+const WORK_STANDARD = ["基礎工事(鉄筋)","基礎工事(型枠)","フレーミング","FM","造作","内装","電気","設備","ガス","清掃","サッシ","外壁","外構","コーキング","リペア","その他"];
+const WORK_MAP = {
+  "配筋検査":["基礎工事(鉄筋)","水道","ガス","その他"],
+  "躯体検査":["フレーミング","電気","水道","防水","その他"],
+  "断熱検査":["断熱","造作","電気","設備","その他"],
+  "中間検査":["造作","電気","水道","外壁","ガス","足場","その他"]
+};
+const WORK_KIKAN = ["基礎工事","フレーミング","防水","造作","内装","電気","設備","ガス","サッシ","外壁","足場","外構","その他"];
+function workOpts(tn){
+  if(tn.startsWith("【検査機関】")) return WORK_KIKAN;
+  if(SHANAI.includes(tn)) return WORK_SHANAI;
+  return WORK_MAP[tn] || WORK_STANDARD;
+}
+
+const $ = s => document.querySelector(s);
+const view = $("#view");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+function toast(m){ const t=$("#toast"); t.textContent=m; t.style.display="block"; clearTimeout(toast.h); toast.h=setTimeout(()=>t.style.display="none",2200); }
+function todayISO(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+
+// ==== 通信 ====
+async function sget(table, params){
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {headers: H});
+  if(!r.ok) throw new Error(`${table} 取得失敗 (${r.status})`);
+  return r.json();
+}
+async function spatch(table, col, val, body){
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`, {
+    method:"PATCH", headers:{...H,"Content-Type":"application/json","Prefer":"return=minimal"}, body: JSON.stringify(body)});
+  if(!r.ok) throw new Error(`更新失敗 (${r.status})`);
+}
+async function upload(blob, name){
+  const r = await fetch(`${SB_URL}/storage/v1/object/photos/${name}`, {
+    method:"POST", headers:{...H,"Content-Type":"image/jpeg","Cache-Control":"public, max-age=31536000, immutable"}, body: blob});
+  if(!r.ok) throw new Error(`写真アップロード失敗 (${r.status})`);
+  return `${SB_URL}/storage/v1/object/public/photos/${name}`;
+}
+
+// ==== 画像リサイズ（長辺800px・画質0.6／サムネは長辺400px・画質0.5） ====
+async function toBitmap(file){
+  if(window.createImageBitmap){
+    try{ return await createImageBitmap(file, {imageOrientation:"from-image"}); }catch(e){}
+  }
+  return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=URL.createObjectURL(file); });
+}
+function drawJpeg(bmp, maxSide, q){
+  const w = bmp.width, h = bmp.height, k = Math.min(1, maxSide / Math.max(w,h));
+  const c = document.createElement("canvas"); c.width = Math.round(w*k); c.height = Math.round(h*k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(res => c.toBlob(res, "image/jpeg", q));
+}
+// 電子黒板の文字を折り返して描く（現行カメラと同じ：1文字ずつ幅を測って折り返し）
+function wrapText(ctx, text, x, y, maxW, lh, maxLines){
+  if(!text) return y;
+  let line = "", n = 0; const chars = text.split("");
+  for(let i = 0; i < chars.length; i++){
+    const t = line + chars[i];
+    if(ctx.measureText(t).width > maxW && i > 0){
+      ctx.fillText(line, x, y); line = chars[i]; y += lh; n++;
+      if(n >= maxLines) return y;
+    } else line = t;
+  }
+  ctx.fillText(line, x, y); return y + lh;
+}
+// 写真を長辺800pxに縮小→右下に黒板を合成→JPEG化。サムネイルは合成後の写真から作る（現行と同じ）
+async function makePhotoSet(file, board, mode){
+  const bmp = await toBitmap(file);
+  const MAX = 800, k = Math.min(1, MAX / Math.max(bmp.width, bmp.height));
+  const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(bmp, 0, 0, w, h);
+  const bw = w * 0.40, bh = h * 0.32, sx = w - bw - 10, sy = h - bh - 10;
+  ctx.fillStyle = (mode === "insp") ? "rgba(0, 50, 0, 0.85)" : "rgba(0, 40, 80, 0.9)"; ctx.fillRect(sx, sy, bw, bh);
+  ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.strokeRect(sx + 5, sy + 5, bw - 10, bh - 10);
+  ctx.fillStyle = "white";
+  const fs = Math.floor(w * 0.022);
+  ctx.font = fs + "px 'Yu Gothic Medium','Hiragino Kaku Gothic ProN',sans-serif";
+  const ls = fs * 1.4, tx = sx + 10, dw = bw - 20;
+  let ty = sy + fs + 12;
+  ty = wrapText(ctx, board.propName, tx, ty, dw, ls, 2);
+  ty = wrapText(ctx, board.inspType + "  " + board.inspDate, tx, ty, dw, ls, 2);
+  ty = wrapText(ctx, board.locationText, tx, ty, dw, ls, 2);
+  ctx.fillStyle = "#ffdddd";
+  wrapText(ctx, board.issueDetail, tx, ty, dw, ls, 3);
+  const full = await new Promise(res => c.toBlob(res, "image/jpeg", 0.6));
+  const thumb = await drawJpeg(c, 400, 0.5);
+  return {full, thumb};
+}
+const IS_MOBILE = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function todayStr(){ const d = new Date(); return d.getFullYear() + "/" + String(d.getMonth()+1).padStart(2,"0") + "/" + String(d.getDate()).padStart(2,"0"); }
+
+
+
+// ==== 画面の位置をURLに保持 ====
+function route(){ const q=new URLSearchParams(location.hash.replace(/^#/,"")); return {p:q.get("p"), t:q.get("t")}; }
+function go(p,t){ const q=new URLSearchParams(); if(p&&t){q.set("p",p);q.set("t",t);} location.hash=q.toString(); }
+window.addEventListener("hashchange", render);
+$("#lb").onclick=()=>{$("#lb").style.display="none";};
+document.addEventListener("click", e=>{ const im=e.target.closest&&e.target.closest("[data-full]"); if(im){ $("#lb img").src=im.dataset.full; $("#lb").style.display="flex"; }});
+
+let pending = {};      // record_id -> 撮影済み写真
+let areaSel = lsGet("felix_admin_area") || "すべて表示";
+let q_search = "";
+
+function showError(msg, retry){
+  view.innerHTML=`<div class="err">${esc(msg)}</div><button class="btn btn-primary" id="retry">もう一度読み込む</button>`;
+  $("#retry").onclick=retry;
+}
+async function render(){
+  const {p,t}=route();
+  view.innerHTML=`<div class="info">読み込み中…</div>`;
+  try{ if(p&&t) await renderDetail(p,t); else await renderList(); }
+  catch(e){ showError("通信に失敗しました。もう一度お試しください。（"+e.message+"）", render); }
+}
+
+async function loadAll(){
+  const [recs, ins, props] = await Promise.all([
+    sget("inspection_records","select=inspection_id,progress_status,area,floor_level,work_type,issue_detail&progress_status=in.(是正待ち,是正確認中)"),
+    sget("inspections","select=*&is_deleted=eq.false"),
+    sget("properties","select=*&is_deleted=eq.false")
+  ]);
+  props.sort((a,b)=>{
+    const ka=(a.handover_date||"").trim()?[0,a.handover_date]:[1,"9999-12-31"];
+    const kb=(b.handover_date||"").trim()?[0,b.handover_date]:[1,"9999-12-31"];
+    return ka[0]-kb[0]||(ka[1]<kb[1]?-1:ka[1]>kb[1]?1:0);
+  });
+  return {recs, ins, props};
+}
+
+// ===== 一覧 =====
+let LC=null;
+async function renderList(fromCache){
+  $("#ttl").textContent="是正ダッシュボード（確認・実施）";
+  const data=(fromCache&&LC)?LC:await loadAll(); LC=data;
+  const {recs, ins, props}=data;
+  const areaOf={},hdate={}; props.forEach(x=>{areaOf[x.property_id]=x.area;hdate[x.property_id]=x.handover_date;});
+  const insMap={}; ins.forEach(i=>insMap[i.inspection_id]=i);
+  const tree={};
+  recs.forEach(r=>{
+    const i=insMap[r.inspection_id]; if(!i) return;
+    if(areaSel!=="すべて表示" && areaOf[i.property_id]!==areaSel) return;
+    const pn=i.property_name||"不明", tn=i.inspection_type||"不明";
+    tree[pn] ??= {prop_id:i.property_id, types:{}, recs:[]};
+    const c=tree[pn].types[tn] ??= {wait_fix:0, wait_conf:0};
+    if(r.progress_status==="是正待ち") c.wait_fix++; else c.wait_conf++;
+    tree[pn].recs.push({...r, _t:tn});
+  });
+  const order=props.map(x=>x.property_name).filter(n=>tree[n]);
+  Object.keys(tree).forEach(n=>{ if(!order.includes(n)) order.push(n); });
+
+  let html=`<div class="seg">${["すべて表示","東海エリア","関東エリア"].map(a=>`<button data-area="${a}" class="${a===areaSel?"on":""}">${a}</button>`).join("")}</div>
+    <input type="text" id="q" placeholder="物件名で検索（一部入力でも可）" value="${esc(q_search)}">`;
+  let any=false;
+  order.forEach(pn=>{
+    if(q_search && !pn.includes(q_search)) return;
+    const node=tree[pn]; any=true;
+    let hd=" (引渡し未設定)", over=false;
+    const h=hdate[node.prop_id];
+    if(h){
+      const diff=Math.round((new Date(h+"T00:00:00")-new Date(todayISO()+"T00:00:00"))/86400000);
+      if(isNaN(diff)) hd=` (引渡し: ${esc(h)})`;
+      else if(diff>0) hd=` (引渡し: ${esc(h)} ⚠️あと${diff}日)`;
+      else if(diff===0) hd=` (引渡し: ${esc(h)} ⚠️本日引渡し！)`;
+      else { hd=` ❗️超過${-diff}日❗️`; over=true; }
+    }
+    html+=`<details class="card"><summary><span class="nm">${esc(pn)}${hd}</span><button class="copy" data-copy="${esc(pn)}">✉️</button></summary><div class="inner">`;
+    if(over) html+=`<div class="over" style="margin-bottom:12px">🚨 引渡し日（${esc(h)}）を超過しています！至急対応してください。</div>`;
+    Object.keys(node.types).sort().forEach(tn=>{
+      const c=node.types[tn];
+      const list=ins.filter(i=>i.property_name===pn && i.inspection_type===tn);
+      const sorted=[...list].sort((a,b)=>((a.delay_reason||"").trim()?0:1)-((b.delay_reason||"").trim()?0:1) || String(a.inspection_id).localeCompare(String(b.inspection_id)));
+      const cur=sorted[0]?.delay_reason||"";
+      const idsAttr=list.map(i=>i.inspection_id).join(",");
+      html+=`<button class="type-btn" data-p="${esc(pn)}" data-t="${esc(tn)}">${esc(tn)}</button>
+        <div class="badge">是正写真待ち：${c.wait_fix}件 ／ 管理者確認待ち：${c.wait_conf}件</div>
+        <input type="text" class="delay" data-ids="${esc(idsAttr)}" value="${esc(cur)}" placeholder="遅延理由を入力して入力欄の外をタップ">`;
+    });
+    html+=`</div></details>`;
+  });
+  if(!any) html+=`<div class="info">現在、該当する対応必要項目はありません。</div>`;
+  view.innerHTML=html;
+
+  view.querySelectorAll("[data-area]").forEach(b=>b.onclick=()=>{areaSel=b.dataset.area; lsSet("felix_admin_area",areaSel); renderList(true);});
+  $("#q").oninput=e=>{q_search=e.target.value; renderList(true).then(()=>{const q=$("#q"); q.focus(); q.setSelectionRange(q.value.length,q.value.length);});};
+  view.querySelectorAll(".type-btn").forEach(b=>b.onclick=()=>go(b.dataset.p,b.dataset.t));
+  view.querySelectorAll(".delay").forEach(inp=>inp.onchange=async()=>{
+    try{ for(const id of inp.dataset.ids.split(",").filter(Boolean)) await spatch("inspections","inspection_id",id,{delay_reason:inp.value}); toast("遅延理由を保存しました"); }
+    catch(e){ toast("保存に失敗しました"); }
+  });
+  view.querySelectorAll("[data-copy]").forEach(b=>b.onclick=ev=>{
+    ev.preventDefault(); ev.stopPropagation();
+    const pn=b.dataset.copy, node=tree[pn];
+    const lines=[`【物件名】 ${pn}`,`【未完了の是正総数】 ${node.recs.length}件`,""];
+    const byType={}; node.recs.forEach(r=>{ ((byType[r._t] ??= {})[r.area||"その他"] ??= []).push(r); });
+    Object.entries(byType).forEach(([tn,ad])=>{
+      lines.push(`《 ${tn} 》`);
+      Object.entries(ad).forEach(([an,rs])=>{
+        lines.push(`■ 部位: ${an}`);
+        rs.forEach(r=>{
+          const head=(tn.startsWith("【検査機関】")||r.floor_level==="一式")?"":`【${r.floor_level||""} ${r.work_type||""}】`.trim();
+          lines.push(`${head} ${r.issue_detail||""} ${r.progress_status==="是正待ち"?"写真待ち":"確認待ち"}`.trim());
+        });
+      });
+      lines.push("");
+    });
+    const txt=lines.join("\n");
+    (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast("コピーしました")).catch(()=>{prompt("コピーしてください",txt);});
+  });
+}
+
+// ===== 詳細 =====
+function sortRecs(rs){
+  const k=r=>[AREA_ORDER.indexOf(r.area)<0?999:AREA_ORDER.indexOf(r.area), WORK_ORDER.indexOf(r.work_type)<0?999:WORK_ORDER.indexOf(r.work_type)];
+  return [...rs].sort((a,b)=>{const x=k(a),y=k(b);return x[0]-y[0]||x[1]-y[1];});
+}
+async function renderDetail(pn,tn){
+  $("#ttl").textContent=pn;
+  const {ins, props}=await loadAll();
+  const ids=ins.filter(i=>i.property_name===pn&&i.inspection_type===tn).map(i=>i.inspection_id);
+  if(!ids.length){ go(); return; }
+  let recs=await sget("inspection_records",`inspection_id=in.(${ids.join(",")})&progress_status=in.(是正待ち,是正確認中)`);
+  let html=`<button class="btn btn-sub" id="back">⬅ 戻る</button>`;
+  if(recs.length && SHANAI.includes(tn)){
+    const fl=[...new Set(recs.map(r=>r.floor_level).filter(Boolean))].sort();
+    html+=`<div style="margin-top:10px">部屋（階層）で絞り込み</div><select id="ffloor"><option>すべて表示</option>${fl.map(f=>`<option>${esc(f)}</option>`).join("")}</select>`;
+  }
+  if(recs.length){
+    const ws=[...new Set(recs.map(r=>r.work_type||"その他"))].sort();
+    html+=`<div>🛠️ 担当工種で絞り込む</div><select id="fwork"><option>すべて表示</option>${ws.map(f=>`<option>${esc(f)}</option>`).join("")}</select>`;
+  }
+  const others=props.filter(x=>x.property_name!==pn);
+  html+=`<details class="sub"><summary>🔄 この検査の物件を変更する（間違えて登録した場合）</summary>
+    <div class="info warn">※この検査に含まれるすべての写真と指摘データを、別の物件に移動させます。</div>
+    ${others.length?`<select id="mvsel">${others.map(x=>`<option value="${esc(x.property_id)}">[${esc(x.area)}] ${esc(x.property_name)}</option>`).join("")}</select>
+      <button class="btn btn-amber" id="mvbtn">この物件にデータを移動する</button>`:`<div class="info">他に移動できる物件がありません。</div>`}
+  </details><div id="recs"></div><div id="bulk"></div>`;
+  view.innerHTML=html;
+  $("#back").onclick=()=>go();
+  $("#mvbtn")?.addEventListener("click", async()=>{
+    const np=others.find(x=>String(x.property_id)===$("#mvsel").value);
+    if(!np||!confirm(`「${np.property_name}」へこの検査のデータをすべて移動します。よろしいですか？`)) return;
+    try{
+      for(const id of ids){
+        await spatch("inspections","inspection_id",id,{property_id:np.property_id,property_name:np.property_name});
+        await spatch("inspection_records","inspection_id",id,{property_id:np.property_id});
+      }
+      toast("移動が完了しました"); go();
+    }catch(e){ toast("移動に失敗しました。時間をおいて再試行してください。"); }
+  });
+
+  const draw=()=>{
+    const ff=$("#ffloor")?.value, fw=$("#fwork")?.value;
+    let list=recs;
+    if(ff&&ff!=="すべて表示") list=list.filter(r=>r.floor_level===ff);
+    if(fw&&fw!=="すべて表示") list=list.filter(r=>(r.work_type||"その他")===fw);
+    list=sortRecs(list);
+    const groups={}; list.forEach(r=>(groups[r.area||"その他"] ??= []).push(r));
+    let h="";
+    Object.entries(groups).forEach(([an,rs])=>{ h+=`<div class="area-h">■ 部位: ${esc(an)}</div>`; rs.forEach(r=>h+=recHtml(r,tn)); });
+    if(!list.length) h=`<div class="info">現在、該当する対応必要項目はありません。</div>`;
+    $("#recs").innerHTML=h;
+    const conf=list.filter(r=>r.progress_status==="是正確認中");
+    $("#bulk").innerHTML=conf.length?`<div style="margin-top:24px"><button class="btn btn-primary" id="bulkbtn">写真提出済みの全項目を一括で承認する</button></div>`:"";
+    $("#bulkbtn")?.addEventListener("click",()=>{
+      $("#bulk").innerHTML=`<div class="err">最終確認： 写真提出済みの ${conf.length} 件を一括で「完了」にします。本当によろしいですか？</div>
+        <div class="btns"><button class="btn btn-primary" id="by">はい、承認を確定します</button><button class="btn btn-sub" id="bn">キャンセル</button></div>`;
+      $("#bn").onclick=draw;
+      $("#by").onclick=async()=>{
+        $("#by").disabled=true; $("#by").innerHTML=`<span class="sp"></span>処理中…`;
+        let ng=0; for(const r of conf){ try{ await spatch("inspection_records","record_id",r.record_id,{progress_status:"完了",approved_date:todayISO()}); r.progress_status="完了"; }catch(e){ ng++; } }
+        if(ng) toast("一部の処理に失敗しました。再度お試しください。"); else toast("すべて承認しました");
+        render();
+      };
+    });
+    bindRecs(list, pn, tn, recs, draw);
+  };
+  $("#ffloor")?.addEventListener("change",draw);
+  $("#fwork")?.addEventListener("change",draw);
+  draw();
+}
+
+function camHtml(id, label){
+  return `<div class="btns"><label class="cam lib">📁 ライブラリ<input type="file" accept="image/*" data-cam="${esc(id)}"></label>
+    ${IS_MOBILE?`<label class="cam shot">📷 ${label}<input type="file" accept="image/*" capture="environment" data-cam="${esc(id)}"></label>`:""}</div>`;
+}
+function recHtml(r,tn){
+  const floor=r.floor_level||"", w=r.work_type||"", detail=r.issue_detail||"", id=r.record_id;
+  const head=(tn.startsWith("【検査機関】")||floor==="一式")?"":`【${floor} ${w}】`.trim();
+  const title=head?`${head} ${detail}`:`【指摘内容】 ${detail}`;
+  const wait=r.progress_status==="是正待ち";
+  const before=r.issue_photo_url?`<img src="${esc(r.issue_photo_thumb_url||r.issue_photo_url)}" data-full="${esc(r.issue_photo_url)}" alt="">`:`<div class="nophoto">写真なし</div>`;
+  const pv=pending[id];
+  const afterPrev=pv?`<img src="${pv.url}" alt="プレビュー">`:`<div class="nophoto">未撮影</div>`;
+  let right;
+  if(wait){
+    right=`<h4>【是正写真を撮影（After）】</h4><div class="after">${afterPrev}</div>`;
+  }else{
+    right=`<h4>【是正写真（After）】</h4>${r.fix_photo_url?`<img src="${esc(r.fix_photo_thumb_url||r.fix_photo_url)}" data-full="${esc(r.fix_photo_url)}" alt="">`:`<div class="nophoto">写真なし</div>`}`;
+  }
+  let actions;
+  if(wait){
+    actions=`<div class="row">${camHtml(id,pv?"撮り直す":"カメラ起動")}</div>
+      <div class="row"><button class="btn btn-amber" data-done="${esc(id)}">写真を保存して完了にする</button></div>`;
+  }else{
+    actions=`<div class="row btns"><button class="btn btn-primary" data-ok="${esc(id)}">承認（完了へ）</button></div>
+      <div class="row"><input type="text" data-reason="${esc(id)}" placeholder="否認理由があれば入力" style="margin-bottom:6px">
+      <button class="btn btn-danger" data-ng="${esc(id)}">否認（差し戻し）</button></div>`;
+  }
+  const wopts=workOpts(tn);
+  const edit=`<details class="sub"><summary>是正内容編集</summary>
+    指摘内容を変更<textarea rows="3" data-ed="${esc(id)}">${esc(detail)}</textarea>
+    工種を変更<select data-ew="${esc(id)}">${[...new Set([...(w&&!wopts.includes(w)?[w]:[]),...wopts])].map(o=>`<option ${o===w?"selected":""}>${esc(o)}</option>`).join("")}</select>
+    指摘箇所の写真を差し替える（任意）<div class="edit-after">${camHtmlEdit(id)}</div><div class="edit-prev"></div>
+    <div class="row"><button class="btn btn-primary" data-es="${esc(id)}">更新を保存</button></div>
+    <div class="info warn" style="margin-top:10px">※指摘の削除は、これまでの画面（旧アプリ）で行ってください。</div>
+  </details>`;
+  return `<div class="rec" data-id="${esc(id)}">
+    <h3>${esc(title)}<span class="st ${wait?"wait":"conf"}">${wait?"写真待ち":"確認待ち"}</span></h3>
+    ${r.reject_reason?`<div class="reject">否認理由: ${esc(r.reject_reason)}</div>`:""}
+    ${edit}
+    <div class="cols"><div><h4>【指摘箇所（Before）】</h4>${before}</div><div>${right}</div></div>
+    ${actions}<div class="msg"></div></div>`;
+}
+function camHtmlEdit(id){
+  return `<div class="btns"><label class="cam lib">📁 ライブラリ<input type="file" accept="image/*" data-editcam="${esc(id)}"></label>
+    ${IS_MOBILE?`<label class="cam shot">📷 カメラ起動<input type="file" accept="image/*" capture="environment" data-editcam="${esc(id)}"></label>`:""}</div>`;
+}
+
+let editPending={};
+function bindRecs(list,pn,tn,allRecs,redraw){
+  const find=id=>allRecs.find(x=>String(x.record_id)===id)||{};
+  const boardFor=(rec,mode,detailOverride)=>{
+    const d=detailOverride ?? (rec.issue_detail||"");
+    return {propName:pn, inspType:tn, inspDate:todayStr(),
+      locationText: mode==="insp" ? `${rec.floor_level||""} ${rec.area||""}`.trim() : `${rec.floor_level||""} ${rec.area||""} ${rec.work_type||""}`.trim(),
+      issueDetail: d.length>80?d.slice(0,80)+"...":d};
+  };
+  // 是正写真の撮影
+  document.querySelectorAll("[data-cam]").forEach(inp=>inp.onchange=async e=>{
+    const id=inp.dataset.cam,f=e.target.files[0]; if(!f) return;
+    const box=inp.closest(".rec"), msg=box.querySelector(".msg");
+    msg.innerHTML=`<div class="info">写真を処理中…</div>`;
+    try{
+      const set=await makePhotoSet(f, boardFor(find(id),"fix"), "fix");
+      if(pending[id]) URL.revokeObjectURL(pending[id].url);
+      pending[id]={...set,url:URL.createObjectURL(set.full)};
+      box.querySelector(".after").innerHTML=`<img src="${pending[id].url}" alt="プレビュー">`; msg.innerHTML="";
+    }catch(err){ msg.innerHTML=`<div class="err">写真を読み込めませんでした。もう一度お試しください。</div>`; }
+  });
+  // 管理者が直接完了にする
+  document.querySelectorAll("[data-done]").forEach(btn=>btn.onclick=async()=>{
+    const id=btn.dataset.done, box=btn.closest(".rec"), msg=box.querySelector(".msg"), pv=pending[id];
+    if(!pv){ msg.innerHTML=`<div class="err">写真をセットしてください</div>`; return; }
+    btn.disabled=true; btn.innerHTML=`<span class="sp"></span>送信中…`;
+    try{
+      const base=(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(16).slice(2));
+      const fu=await upload(pv.full,`${base}.jpg`); let tu=fu; try{ tu=await upload(pv.thumb,`${base}_thumb.jpg`); }catch(e){}
+      await spatch("inspection_records","record_id",id,{progress_status:"完了",fix_photo_url:fu,fix_photo_thumb_url:tu,approved_date:todayISO()});
+      URL.revokeObjectURL(pv.url); delete pending[id]; render();
+    }catch(err){ btn.disabled=false; btn.textContent="写真を保存して完了にする"; msg.innerHTML=`<div class="err">送信に失敗しました。写真は残っています。もう一度押してください。（${esc(err.message)}）</div>`; }
+  });
+  // 承認
+  document.querySelectorAll("[data-ok]").forEach(btn=>btn.onclick=async()=>{
+    btn.disabled=true; btn.innerHTML=`<span class="sp"></span>処理中…`;
+    try{ await spatch("inspection_records","record_id",btn.dataset.ok,{progress_status:"完了",approved_date:todayISO()}); render(); }
+    catch(e){ btn.disabled=false; btn.textContent="承認（完了へ）"; btn.closest(".rec").querySelector(".msg").innerHTML=`<div class="err">処理に失敗しました。もう一度押してください。</div>`; }
+  });
+  // 否認
+  document.querySelectorAll("[data-ng]").forEach(btn=>btn.onclick=async()=>{
+    const id=btn.dataset.ng, reason=btn.closest(".rec").querySelector(`[data-reason="${id}"]`).value;
+    btn.disabled=true; btn.innerHTML=`<span class="sp" style="border-color:#c0392b55;border-top-color:#c0392b"></span>処理中…`;
+    try{ await spatch("inspection_records","record_id",id,{progress_status:"是正待ち",reject_reason:reason}); render(); }
+    catch(e){ btn.disabled=false; btn.textContent="否認（差し戻し）"; btn.closest(".rec").querySelector(".msg").innerHTML=`<div class="err">処理に失敗しました。もう一度押してください。</div>`; }
+  });
+  // 是正内容編集：指摘写真の差し替え
+  document.querySelectorAll("[data-editcam]").forEach(inp=>inp.onchange=async e=>{
+    const id=inp.dataset.editcam,f=e.target.files[0]; if(!f) return;
+    const box=inp.closest(".rec"), prev=box.querySelector(".edit-prev");
+    prev.innerHTML=`<div class="info">写真を処理中…</div>`;
+    try{
+      const newDetail=box.querySelector(`[data-ed="${id}"]`).value;
+      const set=await makePhotoSet(f, boardFor(find(id),"insp",newDetail), "insp");
+      if(editPending[id]) URL.revokeObjectURL(editPending[id].url);
+      editPending[id]={...set,url:URL.createObjectURL(set.full)};
+      prev.innerHTML=`<img src="${editPending[id].url}" style="width:50%;border-radius:8px" alt="プレビュー">`;
+    }catch(err){ prev.innerHTML=`<div class="err">写真を読み込めませんでした。</div>`; }
+  });
+  document.querySelectorAll("[data-es]").forEach(btn=>btn.onclick=async()=>{
+    const id=btn.dataset.es, box=btn.closest(".rec"), msg=box.querySelector(".msg");
+    btn.disabled=true; btn.innerHTML=`<span class="sp"></span>保存中…`;
+    try{
+      const body={issue_detail:box.querySelector(`[data-ed="${id}"]`).value, work_type:box.querySelector(`[data-ew="${id}"]`).value};
+      const ep=editPending[id];
+      if(ep){
+        const base=(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(16).slice(2));
+        body.issue_photo_url=await upload(ep.full,`${base}.jpg`);
+        body.issue_photo_thumb_url=body.issue_photo_url; try{ body.issue_photo_thumb_url=await upload(ep.thumb,`${base}_thumb.jpg`); }catch(e){}
+      }
+      await spatch("inspection_records","record_id",id,body);
+      if(ep){ URL.revokeObjectURL(ep.url); delete editPending[id]; }
+      toast("更新しました"); render();
+    }catch(err){ btn.disabled=false; btn.textContent="更新を保存"; msg.innerHTML=`<div class="err">保存に失敗しました。もう一度押してください。（${esc(err.message)}）</div>`; }
+  });
+}
+
+render();
+</script>
+</body>
+</html>
