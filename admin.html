@@ -54,7 +54,8 @@
   details.sub summary{cursor:pointer;font-weight:700;font-size:14px}
   #lb{display:none;position:fixed;inset:0;background:#0a0f19ee;z-index:100;align-items:center;justify-content:center;padding:16px}
   #lb img{max-width:96vw;max-height:94vh;border-radius:8px}
-  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;display:none;z-index:200}
+  #toast{position:fixed;left:50%;top:70px;transform:translateX(-50%);color:#fff;padding:14px 22px;border-radius:12px;font-size:17px;font-weight:700;display:none;z-index:200;box-shadow:0 6px 18px #0004;max-width:92vw;text-align:center}
+  #toast.ok{background:#1f8a57}#toast.ng{background:#c0392b}
   .sp{display:inline-block;width:14px;height:14px;border:2px solid #fff7;border-top-color:#fff;border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}
   @keyframes s{to{transform:rotate(360deg)}}
 </style>
@@ -95,7 +96,7 @@ const view = $("#view");
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
-function toast(m){ const t=$("#toast"); t.textContent=m; t.style.display="block"; clearTimeout(toast.h); toast.h=setTimeout(()=>t.style.display="none",2200); }
+function toast(m, ok=true){ const t=$("#toast"); t.textContent=(ok?"✅ ":"⚠️ ")+m; t.className=ok?"ok":"ng"; t.style.display="block"; clearTimeout(toast.h); toast.h=setTimeout(()=>t.style.display="none",ok?3000:5000); }
 function todayISO(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 
 // ==== 通信 ====
@@ -267,7 +268,7 @@ async function renderList(fromCache){
   view.querySelectorAll(".type-btn").forEach(b=>b.onclick=()=>go(b.dataset.p,b.dataset.t));
   view.querySelectorAll(".delay").forEach(inp=>inp.onchange=async()=>{
     try{ for(const id of inp.dataset.ids.split(",").filter(Boolean)) await spatch("inspections","inspection_id",id,{delay_reason:inp.value}); toast("遅延理由を保存しました"); }
-    catch(e){ toast("保存に失敗しました"); }
+    catch(e){ toast("遅延理由の保存に失敗しました",false); }
   });
   view.querySelectorAll("[data-copy]").forEach(b=>b.onclick=ev=>{
     ev.preventDefault(); ev.stopPropagation();
@@ -327,7 +328,7 @@ async function renderDetail(pn,tn){
         await spatch("inspection_records","inspection_id",id,{property_id:np.property_id});
       }
       toast("移動が完了しました"); go();
-    }catch(e){ toast("移動に失敗しました。時間をおいて再試行してください。"); }
+    }catch(e){ toast("移動に失敗しました。時間をおいて再試行してください",false); }
   });
 
   const draw=()=>{
@@ -350,7 +351,7 @@ async function renderDetail(pn,tn){
       $("#by").onclick=async()=>{
         $("#by").disabled=true; $("#by").innerHTML=`<span class="sp"></span>処理中…`;
         let ng=0; for(const r of conf){ try{ await spatch("inspection_records","record_id",r.record_id,{progress_status:"完了",approved_date:todayISO()}); r.progress_status="完了"; }catch(e){ ng++; } }
-        if(ng) toast("一部の処理に失敗しました。再度お試しください。"); else toast("すべて承認しました");
+        if(ng) toast(`一括承認：${ng}件が失敗しました。再度お試しください`,false); else toast(`${conf.length}件をすべて承認しました`);
         render();
       };
     });
@@ -438,21 +439,21 @@ function bindRecs(list,pn,tn,allRecs,redraw){
       const base=(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(16).slice(2));
       const fu=await upload(pv.full,`${base}.jpg`); let tu=fu; try{ tu=await upload(pv.thumb,`${base}_thumb.jpg`); }catch(e){}
       await spatch("inspection_records","record_id",id,{progress_status:"完了",fix_photo_url:fu,fix_photo_thumb_url:tu,approved_date:todayISO()});
-      URL.revokeObjectURL(pv.url); delete pending[id]; render();
-    }catch(err){ btn.disabled=false; btn.textContent="写真を保存して完了にする"; msg.innerHTML=`<div class="err">送信に失敗しました。写真は残っています。もう一度押してください。（${esc(err.message)}）</div>`; }
+      URL.revokeObjectURL(pv.url); delete pending[id]; toast("写真を保存して完了にしました"); render();
+    }catch(err){ btn.disabled=false; btn.textContent="写真を保存して完了にする"; toast("送信に失敗しました。もう一度押してください",false); msg.innerHTML=`<div class="err">送信に失敗しました。写真は残っています。もう一度押してください。（${esc(err.message)}）</div>`; }
   });
   // 承認
   document.querySelectorAll("[data-ok]").forEach(btn=>btn.onclick=async()=>{
     btn.disabled=true; btn.innerHTML=`<span class="sp"></span>処理中…`;
-    try{ await spatch("inspection_records","record_id",btn.dataset.ok,{progress_status:"完了",approved_date:todayISO()}); render(); }
-    catch(e){ btn.disabled=false; btn.textContent="承認（完了へ）"; btn.closest(".rec").querySelector(".msg").innerHTML=`<div class="err">処理に失敗しました。もう一度押してください。</div>`; }
+    try{ await spatch("inspection_records","record_id",btn.dataset.ok,{progress_status:"完了",approved_date:todayISO()}); toast("承認しました"); render(); }
+    catch(e){ btn.disabled=false; btn.textContent="承認（完了へ）"; toast("承認に失敗しました。もう一度押してください",false); btn.closest(".rec").querySelector(".msg").innerHTML=`<div class="err">承認に失敗しました。もう一度押してください。</div>`; }
   });
   // 否認
   document.querySelectorAll("[data-ng]").forEach(btn=>btn.onclick=async()=>{
     const id=btn.dataset.ng, reason=btn.closest(".rec").querySelector(`[data-reason="${id}"]`).value;
     btn.disabled=true; btn.innerHTML=`<span class="sp" style="border-color:#c0392b55;border-top-color:#c0392b"></span>処理中…`;
-    try{ await spatch("inspection_records","record_id",id,{progress_status:"是正待ち",reject_reason:reason}); render(); }
-    catch(e){ btn.disabled=false; btn.textContent="否認（差し戻し）"; btn.closest(".rec").querySelector(".msg").innerHTML=`<div class="err">処理に失敗しました。もう一度押してください。</div>`; }
+    try{ await spatch("inspection_records","record_id",id,{progress_status:"是正待ち",reject_reason:reason}); toast("否認しました（差し戻し）"); render(); }
+    catch(e){ btn.disabled=false; btn.textContent="否認（差し戻し）"; toast("否認に失敗しました。もう一度押してください",false); btn.closest(".rec").querySelector(".msg").innerHTML=`<div class="err">否認に失敗しました。もう一度押してください。</div>`; }
   });
   // 是正内容編集：指摘写真の差し替え
   document.querySelectorAll("[data-editcam]").forEach(inp=>inp.onchange=async e=>{
@@ -481,7 +482,7 @@ function bindRecs(list,pn,tn,allRecs,redraw){
       await spatch("inspection_records","record_id",id,body);
       if(ep){ URL.revokeObjectURL(ep.url); delete editPending[id]; }
       toast("更新しました"); render();
-    }catch(err){ btn.disabled=false; btn.textContent="更新を保存"; msg.innerHTML=`<div class="err">保存に失敗しました。もう一度押してください。（${esc(err.message)}）</div>`; }
+    }catch(err){ btn.disabled=false; btn.textContent="更新を保存"; toast("更新に失敗しました。もう一度押してください",false); msg.innerHTML=`<div class="err">保存に失敗しました。もう一度押してください。（${esc(err.message)}）</div>`; }
   });
 }
 
