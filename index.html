@@ -36,6 +36,10 @@
   .reject{background:#fdecea;color:var(--red);padding:8px 10px;border-radius:8px;font-size:13px;margin-bottom:8px}
   label.cam{display:flex;align-items:center;justify-content:center;gap:6px;background:var(--amber);color:#2B2200;border-radius:10px;padding:12px;font-weight:700;font-size:15px;cursor:pointer}
   label.cam input{display:none}
+  .btns{display:flex;gap:10px}
+  .btns label{flex:1}
+  label.cam.lib{background:#27AE60;color:#fff}
+  label.cam.shot{background:#2980B9;color:#fff}
   .row{margin-top:10px}
   select{width:100%;padding:11px;border-radius:8px;border:1px solid var(--line);font-size:15px;margin:6px 0 10px;background:#fff}
   input[type=text]{width:100%;padding:11px;border-radius:8px;border:1px solid var(--line);font-size:15px;margin-bottom:12px}
@@ -102,10 +106,47 @@ function drawJpeg(bmp, maxSide, q){
   c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
   return new Promise(res => c.toBlob(res, "image/jpeg", q));
 }
-async function makePhotoSet(file){
-  const bmp = await toBitmap(file);
-  return {full: await drawJpeg(bmp, 800, 0.6), thumb: await drawJpeg(bmp, 400, 0.5)};
+// 電子黒板の文字を折り返して描く（現行カメラと同じ：1文字ずつ幅を測って折り返し）
+function wrapText(ctx, text, x, y, maxW, lh, maxLines){
+  if(!text) return y;
+  let line = "", n = 0; const chars = text.split("");
+  for(let i = 0; i < chars.length; i++){
+    const t = line + chars[i];
+    if(ctx.measureText(t).width > maxW && i > 0){
+      ctx.fillText(line, x, y); line = chars[i]; y += lh; n++;
+      if(n >= maxLines) return y;
+    } else line = t;
+  }
+  ctx.fillText(line, x, y); return y + lh;
 }
+// 写真を長辺800pxに縮小→右下に黒板を合成→JPEG化。サムネイルは合成後の写真から作る（現行と同じ）
+async function makePhotoSet(file, board){
+  const bmp = await toBitmap(file);
+  const MAX = 800, k = Math.min(1, MAX / Math.max(bmp.width, bmp.height));
+  const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(bmp, 0, 0, w, h);
+  const bw = w * 0.40, bh = h * 0.32, sx = w - bw - 10, sy = h - bh - 10;
+  ctx.fillStyle = "rgba(0, 40, 80, 0.9)"; ctx.fillRect(sx, sy, bw, bh);
+  ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.strokeRect(sx + 5, sy + 5, bw - 10, bh - 10);
+  ctx.fillStyle = "white";
+  const fs = Math.floor(w * 0.022);
+  ctx.font = fs + "px 'Yu Gothic Medium','Hiragino Kaku Gothic ProN',sans-serif";
+  const ls = fs * 1.4, tx = sx + 10, dw = bw - 20;
+  let ty = sy + fs + 12;
+  ty = wrapText(ctx, board.propName, tx, ty, dw, ls, 2);
+  ty = wrapText(ctx, board.inspType + "  " + board.inspDate, tx, ty, dw, ls, 2);
+  ty = wrapText(ctx, board.locationText, tx, ty, dw, ls, 2);
+  ctx.fillStyle = "#ffdddd";
+  wrapText(ctx, board.issueDetail, tx, ty, dw, ls, 3);
+  const full = await new Promise(res => c.toBlob(res, "image/jpeg", 0.6));
+  const thumb = await drawJpeg(c, 400, 0.5);
+  return {full, thumb};
+}
+const IS_MOBILE = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function todayStr(){ const d = new Date(); return d.getFullYear() + "/" + String(d.getMonth()+1).padStart(2,"0") + "/" + String(d.getDate()).padStart(2,"0"); }
 
 // ==== 画面の位置をURLに保持（再読み込みしても同じ画面に戻る） ====
 function route(){
@@ -274,8 +315,10 @@ function recHtml(r, tn){
         <div class="after">${pv ? `<img src="${pv.url}" alt="プレビュー">` : `<div class="nophoto">未撮影</div>`}</div>
       </div>
     </div>
-    <div class="row"><label class="cam">📷 ${pv ? "撮り直す" : "写真を撮る／選ぶ"}
-      <input type="file" accept="image/*" capture="environment" data-cam="${esc(r.record_id)}"></label></div>
+    <div class="row btns">
+      <label class="cam lib">📁 ライブラリ<input type="file" accept="image/*" data-cam="${esc(r.record_id)}"></label>
+      ${IS_MOBILE ? `<label class="cam shot">📷 ${pv ? "撮り直す" : "カメラ起動"}<input type="file" accept="image/*" capture="environment" data-cam="${esc(r.record_id)}"></label>` : ""}
+    </div>
     <div class="row"><button class="btn btn-primary" data-send="${esc(r.record_id)}">完了報告</button></div>
     <div class="msg"></div>
   </div>`;
@@ -287,7 +330,14 @@ function bindRecs(list, pn, tn, allRecs, redraw){
     const box = inp.closest(".rec"), msg = box.querySelector(".msg");
     msg.innerHTML = `<div class="info">写真を処理中…</div>`;
     try{
-      const set = await makePhotoSet(f);
+      const rec = allRecs.find(x => String(x.record_id) === id) || {};
+      const detail = rec.issue_detail || "";
+      const board = {
+        propName: pn, inspType: tn, inspDate: todayStr(),
+        locationText: `${rec.floor_level||""} ${rec.area||""} ${rec.work_type||""}`.trim(),
+        issueDetail: detail.length > 80 ? detail.slice(0, 80) + "..." : detail
+      };
+      const set = await makePhotoSet(f, board);
       if(pending[id]) URL.revokeObjectURL(pending[id].url);
       pending[id] = {...set, url: URL.createObjectURL(set.full)};
       box.querySelector(".after").innerHTML = `<img src="${pending[id].url}" alt="プレビュー">`;
